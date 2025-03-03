@@ -31,8 +31,8 @@ public class CameraRays : MonoBehaviour
             }
         }
     }
-    
-    void Start()
+
+    private void SetCamera()
     {
         _cam = Camera.main;
         _transformCam = _cam.transform;
@@ -40,9 +40,19 @@ public class CameraRays : MonoBehaviour
         _screenWidth = _screenHeight * _cam.aspect;
     }
 
-    void Update()
+    private void UpdateCamera()
     {
         _transformCam = _cam.transform;
+    }
+    
+    void Start()
+    {
+        SetCamera();
+    }
+
+    void Update()
+    {
+        UpdateCamera();
         CameraPoints();
     }
 }
