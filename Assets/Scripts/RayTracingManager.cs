@@ -42,14 +42,29 @@ public class RayTracingManager : MonoBehaviour
         Graphics.Blit(source, destination, customShader);
     }
     
+    private void DrawArrow(Vector3 from, Vector3 to)
+    {
+        Debug.DrawRay(from ,to, Color.black);
+        Vector3 dir = to - from;
+        
+        Vector3 right = Quaternion.Euler(0, 30, 0) * -dir;
+        Vector3 left = Quaternion.Euler(0, -30, 0) * -dir;
+        
+        Debug.DrawRay(to + from, right * 0.01f, Color.black);
+        Debug.DrawRay(to + from, left * 0.01f, Color.black);
+    }
+    
     private void RayTrace()
     {
-        Vector3 startPoint = new Vector3(-_screenWidth/2, -_screenHeight/2, _cam.nearClipPlane); //bottom left point (0,0) in our 2D grid
-        for (float x = 0; x < _screenWidth; x += 0.3f)
+        Vector3 startPoint = new Vector3(-_screenWidth/2, -_screenHeight/2, _cam.farClipPlane);
+        float x_part = _screenWidth / Screen.width;
+        float y_part = _screenHeight / Screen.height;
+        for (float x = 0; x < _screenWidth; x += x_part)
         {
-            for (float y = 0; y < _screenHeight; y += 0.3f)
+            for (float y = 0; y < _screenHeight; y += y_part)
             {
                 Vector3 point = startPoint + new Vector3(x, y, 0);
+                // DrawArrow(_transformCam.position, _transformCam.rotation * point);
             }
         }
     }
@@ -58,7 +73,7 @@ public class RayTracingManager : MonoBehaviour
     {
         _cam = Camera.main;
         _transformCam = _cam.transform;
-        _screenHeight = 2.0f * _cam.nearClipPlane * Mathf.Tan(_cam.fieldOfView * 0.5f * Mathf.Deg2Rad); //nearClipPlane - distance from camera to screen
+        _screenHeight = 2.0f * _cam.farClipPlane * Mathf.Tan(_cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
         _screenWidth = _screenHeight * _cam.aspect;
     }
 
