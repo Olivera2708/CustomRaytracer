@@ -1,97 +1,142 @@
 using System.Collections.Generic;
-using DefaultNamespace;
 using UnityEngine;
 
-[ExecuteAlways]
 public class RayTracingManager : MonoBehaviour
 {
-    private Camera _cam;
-    private Transform _transformCam;
-    private float _screenHeight;
-    private float _screenWidth;
-    [SerializeField] private Material customShader;
-    private List<SceneObject> sceneData = new List<SceneObject>();
+    public ComputeShader rayTracingShader;
+    private Camera camera;
+    
+    private ComputeBuffer vertexBuffer;
+    private ComputeBuffer indexBuffer;
+    private ComputeBuffer hitBuffer;
 
-    private void DrawTriangles()
+    private List<Vector3> vertices = new List<Vector3>();
+    private List<int> indices = new List<int>();
+    private int[] hitResults;
+    private int triangleCount;
+    
+    private ComputeBuffer frustumBuffer;
+    private Vector3[] frustumCorners = new Vector3[8];
+
+    void Start()
     {
-        foreach (SceneObject obj in this.sceneData)
-        {
-            foreach (var triangle in obj.triangles)
-            {
-                Debug.DrawRay(triangle.v0, triangle.v1 - triangle.v0, Color.black);
-                Debug.DrawRay(triangle.v1, triangle.v2 - triangle.v1, Color.black);
-                Debug.DrawRay(triangle.v2, triangle.v0 - triangle.v2, Color.black);
-            }
-        }
+        camera = Camera.main;
+        GetSceneObjects();
+        InitComputeBuffers();
     }
 
-    private void GetSceneObjects()
+    void GetSceneObjects()
     {
-        sceneData.Clear();
+        vertices.Clear();
+        indices.Clear();
+
         MeshRenderer[] meshes = FindObjectsOfType<MeshRenderer>();
         foreach (var mesh in meshes)
         {
             MeshFilter meshFilter = mesh.GetComponent<MeshFilter>();
-            if (meshFilter != null && meshFilter.sharedMesh != null)
-                sceneData.Add(new SceneObject(mesh.transform, meshFilter.sharedMesh));
-        }
-    }
+            if (meshFilter == null || meshFilter.sharedMesh == null) continue;
 
-    void OnRenderImage(RenderTexture source, RenderTexture destination)
-    {
-        Graphics.Blit(source, destination, customShader);
-    }
-    
-    private void DrawArrow(Vector3 from, Vector3 to)
-    {
-        Debug.DrawRay(from ,to, Color.black);
-        Vector3 dir = to - from;
-        
-        Vector3 right = Quaternion.Euler(0, 30, 0) * -dir;
-        Vector3 left = Quaternion.Euler(0, -30, 0) * -dir;
-        
-        Debug.DrawRay(to + from, right * 0.01f, Color.black);
-        Debug.DrawRay(to + from, left * 0.01f, Color.black);
-    }
-    
-    private void RayTrace()
-    {
-        Vector3 startPoint = new Vector3(-_screenWidth/2, -_screenHeight/2, _cam.farClipPlane);
-        float x_part = _screenWidth / Screen.width;
-        float y_part = _screenHeight / Screen.height;
-        for (float x = 0; x < _screenWidth; x += x_part)
-        {
-            for (float y = 0; y < _screenHeight; y += y_part)
+            Mesh meshData = meshFilter.sharedMesh;
+            int vertexOffset = vertices.Count;
+
+            vertices.AddRange(meshData.vertices);
+            foreach (int index in meshData.triangles)
             {
-                Vector3 point = startPoint + new Vector3(x, y, 0);
-                // DrawArrow(_transformCam.position, _transformCam.rotation * point);
+                indices.Add(index + vertexOffset);
             }
         }
     }
 
-    private void SetCamera()
+    void InitComputeBuffers()
     {
-        _cam = Camera.main;
-        _transformCam = _cam.transform;
-        _screenHeight = 2.0f * _cam.farClipPlane * Mathf.Tan(_cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-        _screenWidth = _screenHeight * _cam.aspect;
-    }
-
-    private void UpdateCamera()
-    {
-        _transformCam = _cam.transform;
+        if (vertexBuffer != null) vertexBuffer.Release();
+        if (indexBuffer != null) indexBuffer.Release();
+        if (hitBuffer != null) hitBuffer.Release();
+    
+        vertexBuffer = new ComputeBuffer(vertices.Count, sizeof(float) * 3);
+        indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
+    
+        int totalPixels = Screen.width * Screen.height;
+        hitBuffer = new ComputeBuffer(totalPixels, sizeof(int));
+        triangleCount = indices.Count / 3;
+    
+        vertexBuffer.SetData(vertices);
+        indexBuffer.SetData(indices);
+        hitResults = new int[totalPixels];
+        
+        if (frustumBuffer != null) frustumBuffer.Release();
+    
+        // Buffer for storing frustum corners (8 Vector3s)
+        frustumBuffer = new ComputeBuffer(8, sizeof(float) * 3);
+    
+        // Set the buffer to the Compute Shader
+        rayTracingShader.SetBuffer(0, "frustumBuffer", frustumBuffer);
     }
     
-    void Start()
+    void DebugFrustum()
     {
-        SetCamera();
-        GetSceneObjects();
+        Vector3 camPos = camera.transform.position;
+        
+        // Far Plane (Green)
+        Debug.DrawRay(camPos, frustumCorners[4] - camPos, Color.green); // Bottom Left
+        Debug.DrawRay(camPos, frustumCorners[5] - camPos, Color.green); // Bottom Right
+        Debug.DrawRay(camPos, frustumCorners[6] - camPos, Color.green); // Top Left
+        Debug.DrawRay(camPos, frustumCorners[7] - camPos, Color.green); // Top Right
+        
+        // Near Plane (Red)
+        Debug.DrawRay(camPos, frustumCorners[0] - camPos, Color.red); // Bottom Left
+        Debug.DrawRay(camPos, frustumCorners[1] - camPos, Color.red); // Bottom Right
+        Debug.DrawRay(camPos, frustumCorners[2] - camPos, Color.red); // Top Left
+        Debug.DrawRay(camPos, frustumCorners[3] - camPos, Color.red); // Top Right
+    }
+
+    void DispatchComputeShader()
+    {
+        rayTracingShader.SetInt("width", Screen.width);
+        rayTracingShader.SetInt("height", Screen.height);
+        rayTracingShader.SetInt("triangleCount", triangleCount);
+        rayTracingShader.SetBuffer(0, "vertices", vertexBuffer);
+        rayTracingShader.SetBuffer(0, "indices", indexBuffer);
+        rayTracingShader.SetBuffer(0, "hitBuffer", hitBuffer);
+        
+        rayTracingShader.SetVector("cameraPosition", camera.transform.position);
+        rayTracingShader.SetVector("cameraRight", camera.transform.right);
+        rayTracingShader.SetVector("cameraUp", camera.transform.up);
+        rayTracingShader.SetVector("cameraForward", camera.transform.forward);
+        rayTracingShader.SetFloat("fov", camera.fieldOfView);
+        rayTracingShader.SetFloat("aspectRatio", (float)Screen.width / Screen.height);
+        rayTracingShader.SetFloat("nearPlane", camera.nearClipPlane);
+        rayTracingShader.SetFloat("farPlane", camera.farClipPlane);
+
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
+        rayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+
+        hitBuffer.GetData(hitResults);
+        frustumBuffer.GetData(frustumCorners);
+        DebugFrustum();
+        DebugHits();
+    }
+
+    void DebugHits()
+    {
+        int hitCount = 0;
+        for (int i = 0; i < hitResults.Length; i++)
+        {
+            if (hitResults[i] == 1) hitCount++;
+        }
+        Debug.Log("Hit Pixels: " + hitCount);
     }
 
     void Update()
     {
-        UpdateCamera();
-        RayTrace();
-        DrawTriangles();
+        DispatchComputeShader();
+    }
+
+    void OnDestroy()
+    {
+        if (vertexBuffer != null) vertexBuffer.Release();
+        if (indexBuffer != null) indexBuffer.Release();
+        if (hitBuffer != null) hitBuffer.Release();
     }
 }
