@@ -39,11 +39,11 @@ public class RayTracingManager : MonoBehaviour
             Mesh meshData = meshFilter.sharedMesh;
             int vertexOffset = vertices.Count;
 
-            vertices.AddRange(meshData.vertices);
+            foreach (Vector3 vertex in meshData.vertices)
+                vertices.Add(mesh.transform.TransformPoint(vertex));
+
             foreach (int index in meshData.triangles)
-            {
                 indices.Add(index + vertexOffset);
-            }
         }
     }
 
@@ -66,10 +66,8 @@ public class RayTracingManager : MonoBehaviour
         
         if (frustumBuffer != null) frustumBuffer.Release();
     
-        // Buffer for storing frustum corners (8 Vector3s)
+        // just help for frustum
         frustumBuffer = new ComputeBuffer(8, sizeof(float) * 3);
-    
-        // Set the buffer to the Compute Shader
         rayTracingShader.SetBuffer(0, "frustumBuffer", frustumBuffer);
     }
     
@@ -114,8 +112,8 @@ public class RayTracingManager : MonoBehaviour
 
         hitBuffer.GetData(hitResults);
         frustumBuffer.GetData(frustumCorners);
-        DebugFrustum();
-        DebugHits();
+        // DebugFrustum();
+        // DebugHits();
     }
 
     void DebugHits()

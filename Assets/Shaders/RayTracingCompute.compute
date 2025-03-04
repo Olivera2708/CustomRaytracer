@@ -79,11 +79,17 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     
     float closestT = farPlane;
     bool hit = false;
+
+    float3 rayDirWorld = normalize(
+        rayDirCamera.x * cameraRight +
+        rayDirCamera.y * cameraUp +
+        rayDirCamera.z * cameraForward
+    );
     
     for (int i = 0; i < triangleCount * 3; i += 3)
     {
         float t;
-        if (RayIntersectsTriangle(cameraPosition, rayDirCamera, vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], t))
+        if (RayIntersectsTriangle(cameraPosition, rayDirWorld, vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], t))
         {
             if (t < closestT && t >= nearPlane)
             {
