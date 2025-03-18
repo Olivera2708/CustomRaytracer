@@ -4,11 +4,11 @@ using UnityEngine;
 public class RayTracingManager : MonoBehaviour
 {
     public ComputeShader rayTracingShader;
+    public Material displayMaterial;
     private Camera camera;
     
     private ComputeBuffer vertexBuffer;
     private ComputeBuffer indexBuffer;
-    private ComputeBuffer hitBuffer;
 
     private List<Vector3> vertices = new List<Vector3>();
     private List<int> indices = new List<int>();
@@ -17,12 +17,14 @@ public class RayTracingManager : MonoBehaviour
     
     private ComputeBuffer frustumBuffer;
     private Vector3[] frustumCorners = new Vector3[8];
+    private RenderTexture renderTexture;
 
     void Start()
     {
         camera = Camera.main;
         GetSceneObjects();
         InitComputeBuffers();
+        InitRenderTexture();
     }
 
     void GetSceneObjects()
@@ -47,17 +49,27 @@ public class RayTracingManager : MonoBehaviour
         }
     }
 
+    void InitRenderTexture()
+    {
+        if (renderTexture != null) renderTexture.Release();
+
+        renderTexture = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat);
+        renderTexture.enableRandomWrite = true;
+        renderTexture.Create();
+
+        rayTracingShader.SetTexture(0, "colorBuffer", renderTexture);
+        displayMaterial.SetTexture("_MainTex", renderTexture);
+    }
+
     void InitComputeBuffers()
     {
         if (vertexBuffer != null) vertexBuffer.Release();
         if (indexBuffer != null) indexBuffer.Release();
-        if (hitBuffer != null) hitBuffer.Release();
     
         vertexBuffer = new ComputeBuffer(vertices.Count, sizeof(float) * 3);
         indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
     
         int totalPixels = Screen.width * Screen.height;
-        hitBuffer = new ComputeBuffer(totalPixels, sizeof(int));
         triangleCount = indices.Count / 3;
     
         vertexBuffer.SetData(vertices);
@@ -95,7 +107,6 @@ public class RayTracingManager : MonoBehaviour
         rayTracingShader.SetInt("triangleCount", triangleCount);
         rayTracingShader.SetBuffer(0, "vertices", vertexBuffer);
         rayTracingShader.SetBuffer(0, "indices", indexBuffer);
-        rayTracingShader.SetBuffer(0, "hitBuffer", hitBuffer);
         
         rayTracingShader.SetVector("cameraPosition", camera.transform.position);
         rayTracingShader.SetVector("cameraRight", camera.transform.right);
@@ -106,12 +117,11 @@ public class RayTracingManager : MonoBehaviour
         rayTracingShader.SetFloat("nearPlane", camera.nearClipPlane);
         rayTracingShader.SetFloat("farPlane", camera.farClipPlane);
 
-        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
-        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 16.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 16.0f);
         rayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
 
-        hitBuffer.GetData(hitResults);
-        frustumBuffer.GetData(frustumCorners);
+        // frustumBuffer.GetData(frustumCorners);
         // DebugFrustum();
         // DebugHits();
     }
@@ -126,15 +136,21 @@ public class RayTracingManager : MonoBehaviour
         Debug.Log("Hit Pixels: " + hitCount);
     }
 
-    void Update()
+    void FixedUpdate()
     {
         DispatchComputeShader();
+    }
+    
+    void OnRenderImage(RenderTexture src, RenderTexture dest)
+    {
+        Graphics.Blit(renderTexture, dest, displayMaterial);
     }
 
     void OnDestroy()
     {
         if (vertexBuffer != null) vertexBuffer.Release();
         if (indexBuffer != null) indexBuffer.Release();
-        if (hitBuffer != null) hitBuffer.Release();
+        if (renderTexture != null) renderTexture.Release();
+        if (frustumBuffer != null) frustumBuffer.Release();
     }
 }

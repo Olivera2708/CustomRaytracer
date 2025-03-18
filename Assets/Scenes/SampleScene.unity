@@ -423,12 +423,13 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 710f9da0a5c4e4f4ebbd23b417cff4b5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   rayTracingShader: {fileID: 7200000, guid: 64ccc1a97132aae4fb834a3953c70046, type: 3}
+  displayMaterial: {fileID: 2100000, guid: 4c222d588a5b77743918d936d755a6f7, type: 2}
 --- !u!114 &963194230
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -448,12 +449,12 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1b1883812edc66440ad9b24443bfe7d7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  customShader: {fileID: 0}
+  customShader: {fileID: 2100000, guid: 195f68bb3129a1c4cbf977c79f3d9637, type: 2}
 --- !u!1 &1626885734
 GameObject:
   m_ObjectHideFlags: 0

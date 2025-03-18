@@ -15,8 +15,8 @@ float farPlane;
 StructuredBuffer<float3> vertices;
 StructuredBuffer<int> indices;
 
-RWStructuredBuffer<int> hitBuffer;
 RWStructuredBuffer<float3> frustumBuffer;
+RWTexture2D<float4> colorBuffer;
 
 struct Ray
 {
@@ -52,13 +52,12 @@ bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1
     return t > 0.0001f;
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(16, 16, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= width || id.y >= height) return;
 
     int pixelIndex = id.y * width + id.x;
-    hitBuffer[pixelIndex] = 0;
     
     float2 ndc = ((id.xy + 0.5) / float2(width, height)) * 2.0 - 1.0;
     ndc.x *= aspectRatio;
@@ -79,6 +78,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     
     float closestT = farPlane;
     bool hit = false;
+    float3 hitColor = float3(0, 0, 0);
 
     float3 rayDirWorld = normalize(
         rayDirCamera.x * cameraRight +
@@ -95,8 +95,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             {
                 closestT = t;
                 hit = true;
+                hitColor = float3(1.0, 1.0, 1.0);
             }
         }
     }
-    hitBuffer[pixelIndex] = hit ? 1 : 0;
+    colorBuffer[id.xy] = hit ? float4(hitColor, 1.0) : float4(0, 0, 0, 1.0);
 }
