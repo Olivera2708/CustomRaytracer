@@ -14,6 +14,8 @@ float farPlane;
 
 StructuredBuffer<float3> vertices;
 StructuredBuffer<int> indices;
+StructuredBuffer<int> materialIndices;
+StructuredBuffer<float3> materialColors;
 
 RWStructuredBuffer<float3> frustumBuffer;
 RWTexture2D<float4> colorBuffer;
@@ -95,7 +97,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             {
                 closestT = t;
                 hit = true;
-                hitColor = float3(1.0, 1.0, 1.0);
+                hitColor = materialColors[materialIndices[i]];
             }
         }
     }

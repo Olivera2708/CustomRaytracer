@@ -5,11 +5,15 @@ public class RayTracingManager : MonoBehaviour
 {
     public ComputeShader rayTracingShader;
     public Material displayMaterial;
-    private Camera camera;
+    private Camera rayTracingCamera;
     
     private ComputeBuffer vertexBuffer;
     private ComputeBuffer indexBuffer;
-
+    private ComputeBuffer materialBuffer;
+    private ComputeBuffer materialIndexBuffer;
+    
+    private List<int> materialIndices = new List<int>();
+    private List<Vector3> materialColors = new List<Vector3>();
     private List<Vector3> vertices = new List<Vector3>();
     private List<int> indices = new List<int>();
     private int[] hitResults;
@@ -21,16 +25,32 @@ public class RayTracingManager : MonoBehaviour
 
     void Start()
     {
-        camera = Camera.main;
+        rayTracingCamera = Camera.main;
         GetSceneObjects();
+        GetMaterials();
         InitComputeBuffers();
         InitRenderTexture();
+    }
+
+    void GetMaterials()
+    {
+        materialColors.Clear();
+        MeshRenderer[] meshes = FindObjectsOfType<MeshRenderer>();
+
+        foreach (var mesh in meshes)
+        {
+            Material mat = mesh.sharedMaterial;
+            Color color = mat.color;
+            materialColors.Add(new Vector3(color.r, color.g, color.b));
+        }
     }
 
     void GetSceneObjects()
     {
         vertices.Clear();
         indices.Clear();
+        materialIndices.Clear();
+        int objectIndex = 0;
 
         MeshRenderer[] meshes = FindObjectsOfType<MeshRenderer>();
         foreach (var mesh in meshes)
@@ -45,7 +65,12 @@ public class RayTracingManager : MonoBehaviour
                 vertices.Add(mesh.transform.TransformPoint(vertex));
 
             foreach (int index in meshData.triangles)
+            {
                 indices.Add(index + vertexOffset);
+                materialIndices.Add(objectIndex);
+            }
+
+            objectIndex++;
         }
     }
 
@@ -65,15 +90,21 @@ public class RayTracingManager : MonoBehaviour
     {
         if (vertexBuffer != null) vertexBuffer.Release();
         if (indexBuffer != null) indexBuffer.Release();
+        if (materialBuffer != null) materialBuffer.Release();
+        if (materialIndexBuffer != null) materialIndexBuffer.Release();
     
         vertexBuffer = new ComputeBuffer(vertices.Count, sizeof(float) * 3);
         indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
+        materialBuffer = new ComputeBuffer(materialColors.Count, sizeof(float) * 3);
+        materialIndexBuffer  = new ComputeBuffer(materialIndices.Count, sizeof(int));
     
         int totalPixels = Screen.width * Screen.height;
         triangleCount = indices.Count / 3;
     
         vertexBuffer.SetData(vertices);
         indexBuffer.SetData(indices);
+        materialBuffer.SetData(materialColors);
+        materialIndexBuffer.SetData(materialIndices);
         hitResults = new int[totalPixels];
         
         if (frustumBuffer != null) frustumBuffer.Release();
@@ -85,7 +116,7 @@ public class RayTracingManager : MonoBehaviour
     
     void DebugFrustum()
     {
-        Vector3 camPos = camera.transform.position;
+        Vector3 camPos = rayTracingCamera.transform.position;
         
         // Far Plane (Green)
         Debug.DrawRay(camPos, frustumCorners[4] - camPos, Color.green); // Bottom Left
@@ -107,15 +138,17 @@ public class RayTracingManager : MonoBehaviour
         rayTracingShader.SetInt("triangleCount", triangleCount);
         rayTracingShader.SetBuffer(0, "vertices", vertexBuffer);
         rayTracingShader.SetBuffer(0, "indices", indexBuffer);
+        rayTracingShader.SetBuffer(0, "materialColors", materialBuffer);
+        rayTracingShader.SetBuffer(0, "materialIndices", materialIndexBuffer);
         
-        rayTracingShader.SetVector("cameraPosition", camera.transform.position);
-        rayTracingShader.SetVector("cameraRight", camera.transform.right);
-        rayTracingShader.SetVector("cameraUp", camera.transform.up);
-        rayTracingShader.SetVector("cameraForward", camera.transform.forward);
-        rayTracingShader.SetFloat("fov", camera.fieldOfView);
+        rayTracingShader.SetVector("cameraPosition", rayTracingCamera.transform.position);
+        rayTracingShader.SetVector("cameraRight", rayTracingCamera.transform.right);
+        rayTracingShader.SetVector("cameraUp", rayTracingCamera.transform.up);
+        rayTracingShader.SetVector("cameraForward", rayTracingCamera.transform.forward);
+        rayTracingShader.SetFloat("fov", rayTracingCamera.fieldOfView);
         rayTracingShader.SetFloat("aspectRatio", (float)Screen.width / Screen.height);
-        rayTracingShader.SetFloat("nearPlane", camera.nearClipPlane);
-        rayTracingShader.SetFloat("farPlane", camera.farClipPlane);
+        rayTracingShader.SetFloat("nearPlane", rayTracingCamera.nearClipPlane);
+        rayTracingShader.SetFloat("farPlane", rayTracingCamera.farClipPlane);
 
         int threadGroupsX = Mathf.CeilToInt(Screen.width / 16.0f);
         int threadGroupsY = Mathf.CeilToInt(Screen.height / 16.0f);
@@ -152,5 +185,7 @@ public class RayTracingManager : MonoBehaviour
         if (indexBuffer != null) indexBuffer.Release();
         if (renderTexture != null) renderTexture.Release();
         if (frustumBuffer != null) frustumBuffer.Release();
+        if (materialBuffer != null) materialBuffer.Release();
+        if (materialIndexBuffer != null) materialIndexBuffer.Release();
     }
 }
