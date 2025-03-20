@@ -43,7 +43,7 @@ public class RayTracingManager : MonoBehaviour
         foreach (var mesh in meshes)
         {
             Material mat = mesh.sharedMaterial;
-            Color color = mat.color;
+            Color color = mat.color.linear;
             materialColors.Add(new Vector3(color.r, color.g, color.b));
         }
     }
