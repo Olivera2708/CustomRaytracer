@@ -11,6 +11,7 @@ public class RayTracingManager : MonoBehaviour
     private ComputeBuffer indexBuffer;
     private ComputeBuffer materialBuffer;
     private ComputeBuffer materialIndexBuffer;
+    private RenderTexture accumTexture;
     
     private List<int> materialIndices = new List<int>();
     private List<Vector3> materialColors = new List<Vector3>();
@@ -22,6 +23,8 @@ public class RayTracingManager : MonoBehaviour
     private ComputeBuffer frustumBuffer;
     private Vector3[] frustumCorners = new Vector3[8];
     private RenderTexture renderTexture;
+
+    private int sampleCount = 0;
 
     void Start()
     {
@@ -77,12 +80,18 @@ public class RayTracingManager : MonoBehaviour
     void InitRenderTexture()
     {
         if (renderTexture != null) renderTexture.Release();
+        if (accumTexture != null) accumTexture.Release();
 
         renderTexture = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat);
         renderTexture.enableRandomWrite = true;
         renderTexture.Create();
+        
+        accumTexture = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBFloat);
+        accumTexture.enableRandomWrite = true;
+        accumTexture.Create();
 
         rayTracingShader.SetTexture(0, "colorBuffer", renderTexture);
+        rayTracingShader.SetTexture(0, "accumBuffer", accumTexture);
         displayMaterial.SetTexture("_MainTex", renderTexture);
     }
 
@@ -149,10 +158,14 @@ public class RayTracingManager : MonoBehaviour
         rayTracingShader.SetFloat("aspectRatio", (float)Screen.width / Screen.height);
         rayTracingShader.SetFloat("nearPlane", rayTracingCamera.nearClipPlane);
         rayTracingShader.SetFloat("farPlane", rayTracingCamera.farClipPlane);
+        
+        rayTracingShader.SetInt("sampleCount", sampleCount);
 
         int threadGroupsX = Mathf.CeilToInt(Screen.width / 16.0f);
         int threadGroupsY = Mathf.CeilToInt(Screen.height / 16.0f);
         rayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+        
+        sampleCount++;
 
         // frustumBuffer.GetData(frustumCorners);
         // DebugFrustum();

@@ -17,6 +17,9 @@ StructuredBuffer<int> indices;
 StructuredBuffer<int> materialIndices;
 StructuredBuffer<float3> materialColors;
 
+RWTexture2D<float4> accumBuffer;
+int sampleCount;
+
 RWStructuredBuffer<float3> frustumBuffer;
 RWTexture2D<float4> colorBuffer;
 
@@ -101,5 +104,12 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             }
         }
     }
-    colorBuffer[id.xy] = hit ? float4(hitColor, 1.0) : float4(0, 0, 0, 1.0);
+
+    float4 newColor = hit ? float4(hitColor, 1.0) : float4(0, 0, 0, 1.0);
+    if (sampleCount == 0)
+        accumBuffer[id.xy] = newColor;
+    else
+        accumBuffer[id.xy] = (accumBuffer[id.xy] * (sampleCount - 1) + newColor) / sampleCount;
+    
+    colorBuffer[id.xy] = accumBuffer[id.xy];
 }
