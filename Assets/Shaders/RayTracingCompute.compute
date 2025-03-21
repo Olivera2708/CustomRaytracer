@@ -8,6 +8,8 @@ struct BVHNode
     int rightChild;
     int firstTriangle;
     int triangleCount;
+    int parent;
+    int escapeIndex;
 };
 
 int width, height;
@@ -85,43 +87,44 @@ bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1
 bool TraverseBVH(float3 origin, float3 direction, out int hitTriangle)
 {
     float3 invDir = rcp(direction);
-    int stack[32];
-    int stackIdx = 0;
-    stack[stackIdx++] = 0;
-    
+    int nodeIndex = 0;
     hitTriangle = -1;
     float t = farPlane;
-    
-    while (stackIdx > 0)
+
+    while (nodeIndex != -1)
     {
-        int nodeIndex = stack[--stackIdx];
         BVHNode node = bvhNodes[nodeIndex];
 
         float tmin;
         if (!IntersectAABB(origin, invDir, node.minBounds, node.maxBounds, tmin) || tmin > t)
+        {
+            nodeIndex = node.escapeIndex;
             continue;
+        }
 
         if (node.triangleCount > 0)
         {
-            for (int i = node.firstTriangle * 3; i < (node.firstTriangle + node.triangleCount) * 3; i += 3)
+            for (uint i = node.firstTriangle * 3; i < (node.firstTriangle + node.triangleCount) * 3; i += 3)
             {
                 float tempT;
-                if (RayIntersectsTriangle(origin, direction, vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], tempT) && tempT < t && tempT > nearPlane)
+                if (RayIntersectsTriangle(origin, direction, 
+                    vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], tempT) && tempT < t && tempT > nearPlane)
                 {
                     t = tempT;
                     hitTriangle = i;
                 }
             }
+            nodeIndex = node.escapeIndex;
         }
         else
         {
-            stack[stackIdx++] = node.leftChild;
-            stack[stackIdx++] = node.rightChild;
+            nodeIndex = (node.leftChild != -1) ? node.leftChild : node.escapeIndex;
         }
     }
-    
+
     return hitTriangle != -1;
 }
+
 
 void CreateFrustum(uint3 id, float3 rayDirCamera)
 {
@@ -136,7 +139,7 @@ void CreateFrustum(uint3 id, float3 rayDirCamera)
     if (id.x == width - 1 && id.y == height - 1) frustumBuffer[7] = cameraPosition + rayDirCamera * farPlane; // Far Top Right
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(16, 16, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= width || id.y >= height) return;

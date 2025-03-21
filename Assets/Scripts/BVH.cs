@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Animations;
 
 public struct BVHNode
 {
@@ -11,6 +12,8 @@ public struct BVHNode
     public int rightChild;
     public int firstTriangle;
     public int triangleCount;
+    public int parent;
+    public int escapeIndex;
 }
 
 public class BVH
@@ -26,11 +29,13 @@ public class BVH
         Build(0, triangles.Count / 3);
     }
     
-    private int Build(int start, int count)
+    private int Build(int start, int count, int parent = -1)
     {
         BVHNode node = new BVHNode();
         node.firstTriangle = start;
         node.triangleCount = count;
+        node.parent = parent;
+        node.escapeIndex = -1;
 
         ComputeBounds(ref node, vertices, triangles);
         int nodeIndex = nodes.Count;
@@ -41,11 +46,25 @@ public class BVH
 
         int splitAxis = ChooseSplitAxis(node);
         int mid = PartitionTrianglesMedian(vertices, triangles, start, count, splitAxis);
+        
+        int leftChild = Build(start, mid - start, nodeIndex);
+        int rightChild = Build(mid, count - (mid - start), nodeIndex);
 
         BVHNode updatedNode = nodes[nodeIndex];
-        updatedNode.leftChild = Build(start, mid - start);
-        updatedNode.rightChild = Build(mid, count - (mid - start));
+        updatedNode.leftChild = leftChild;
+        updatedNode.rightChild = rightChild;
         nodes[nodeIndex] = updatedNode;
+        
+        BVHNode leftNode = nodes[leftChild];
+        leftNode.escapeIndex = rightChild != -1 ? rightChild : nodeIndex + 1;
+        nodes[leftChild] = leftNode;
+
+        if (rightChild != -1)
+        {
+            BVHNode rightNode = nodes[rightChild];
+            rightNode.escapeIndex = nodeIndex + 1;
+            nodes[rightChild] = rightNode;
+        }
 
         return nodeIndex;
     }

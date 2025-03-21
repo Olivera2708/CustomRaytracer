@@ -113,7 +113,7 @@ public class RayTracingManager : MonoBehaviour
         indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
         materialBuffer = new ComputeBuffer(materialColors.Count, sizeof(float) * 3);
         materialIndexBuffer  = new ComputeBuffer(materialIndices.Count, sizeof(int));
-        bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 4 + sizeof(float) * 6);
+        bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 6 + sizeof(float) * 6);
     
         int totalPixels = Screen.width * Screen.height;
         triangleCount = indices.Count / 3;
@@ -171,8 +171,8 @@ public class RayTracingManager : MonoBehaviour
         
         rayTracingShader.SetInt("sampleCount", sampleCount);
 
-        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
-        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 16.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 16.0f);
         rayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
         
         sampleCount++;
