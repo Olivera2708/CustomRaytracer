@@ -1,8 +1,6 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Animations;
 
 public struct BVHNode
 {
@@ -12,7 +10,6 @@ public struct BVHNode
     public int rightChild;
     public int firstTriangle;
     public int triangleCount;
-    public int parent;
     public int escapeIndex;
 }
 
@@ -29,12 +26,11 @@ public class BVH
         Build(0, triangles.Count / 3);
     }
     
-    private int Build(int start, int count, int parent = -1)
+    private int Build(int start, int count)
     {
         BVHNode node = new BVHNode();
         node.firstTriangle = start;
         node.triangleCount = count;
-        node.parent = parent;
         node.escapeIndex = -1;
 
         ComputeBounds(ref node, vertices, triangles);
@@ -47,8 +43,8 @@ public class BVH
         int splitAxis = ChooseSplitAxis(node);
         int mid = PartitionTrianglesMedian(vertices, triangles, start, count, splitAxis);
         
-        int leftChild = Build(start, mid - start, nodeIndex);
-        int rightChild = Build(mid, count - (mid - start), nodeIndex);
+        int leftChild = Build(start, mid - start);
+        int rightChild = Build(mid, count - (mid - start));
 
         BVHNode updatedNode = nodes[nodeIndex];
         updatedNode.leftChild = leftChild;

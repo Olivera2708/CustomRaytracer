@@ -8,7 +8,6 @@ struct BVHNode
     int rightChild;
     int firstTriangle;
     int triangleCount;
-    int parent;
     int escapeIndex;
 };
 

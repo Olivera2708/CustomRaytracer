@@ -113,7 +113,7 @@ public class RayTracingManager : MonoBehaviour
         indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
         materialBuffer = new ComputeBuffer(materialColors.Count, sizeof(float) * 3);
         materialIndexBuffer  = new ComputeBuffer(materialIndices.Count, sizeof(int));
-        bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 6 + sizeof(float) * 6);
+        bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 5 + sizeof(float) * 6);
     
         int totalPixels = Screen.width * Screen.height;
         triangleCount = indices.Count / 3;
