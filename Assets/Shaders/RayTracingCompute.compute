@@ -1,5 +1,15 @@
 #pragma kernel CSMain
 
+struct BVHNode
+{
+    float3 minBounds;
+    float3 maxBounds;
+    int leftChild;
+    int rightChild;
+    int firstTriangle;
+    int triangleCount;
+};
+
 int width, height;
 int triangleCount;
 
@@ -16,6 +26,7 @@ StructuredBuffer<float3> vertices;
 StructuredBuffer<int> indices;
 StructuredBuffer<int> materialIndices;
 StructuredBuffer<float3> materialColors;
+StructuredBuffer<BVHNode> bvhNodes;
 
 RWTexture2D<float4> accumBuffer;
 int sampleCount;
@@ -29,48 +40,91 @@ struct Ray
     float3 direction;
 };
 
+bool IntersectAABB(float3 origin, float3 invDir, float3 minBounds, float3 maxBounds, out float tmin)
+{
+    float3 t0 = (minBounds - origin) * invDir;
+    float3 t1 = (maxBounds - origin) * invDir;
+
+    float3 tminVec = min(t0, t1);
+    float3 tmaxVec = max(t0, t1);
+
+    tmin = max(max(tminVec.x, tminVec.y), tminVec.z);
+    float tmax = min(min(tmaxVec.x, tmaxVec.y), tmaxVec.z);
+
+    return tmax >= tmin && tmax > 0;
+}
+
 // Möller–Trumbore intersection algorithm
 bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1, float3 v2, out float t)
 {
-    t = 0;
     float3 edge1 = v1 - v0;
     float3 edge2 = v2 - v0;
 
     float3 h = cross(direction, edge2);
-    float a = dot(edge1, h);
+    float det = dot(edge1, h);
 
-    if (abs(a) < 0.0001f) return false;
+    if (abs(det) < 1e-5f) return false;
 
-    float f = 1.0f / a;
+    float invDet = rcp(det);
     float3 s = origin - v0;
-    float u = f * dot(s, h);
+    float u = mad(dot(s, h), invDet, 0.0f);
 
     if (u < 0.0f || u > 1.0f) return false;
 
     float3 q = cross(s, edge1);
-    float v = f * dot(direction, q);
+    float v = mad(dot(direction, q), invDet, 0.0f);
 
     if (v < 0.0f || u + v > 1.0f) return false;
 
-    t = f * dot(edge2, q);
+    t = mad(dot(edge2, q), invDet, 0.0f);
 
-    return t > 0.0001f;
+    return t > 1e-5f;
 }
 
-[numthreads(16, 16, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
+// BVH
+bool TraverseBVH(float3 origin, float3 direction, out int hitTriangle)
 {
-    if (id.x >= width || id.y >= height) return;
-
-    int pixelIndex = id.y * width + id.x;
+    float3 invDir = rcp(direction);
+    int stack[32];
+    int stackIdx = 0;
+    stack[stackIdx++] = 0;
     
-    float2 ndc = ((id.xy + 0.5) / float2(width, height)) * 2.0 - 1.0;
-    ndc.x *= aspectRatio;
+    hitTriangle = -1;
+    float t = farPlane;
+    
+    while (stackIdx > 0)
+    {
+        int nodeIndex = stack[--stackIdx];
+        BVHNode node = bvhNodes[nodeIndex];
 
-    float scale = tan(radians(fov * 0.5));
-    float3 rayDirCamera = float3(ndc.x * scale, ndc.y * scale, 1.0);
+        float tmin;
+        if (!IntersectAABB(origin, invDir, node.minBounds, node.maxBounds, tmin) || tmin > t)
+            continue;
 
-    // This works good
+        if (node.triangleCount > 0)
+        {
+            for (int i = node.firstTriangle * 3; i < (node.firstTriangle + node.triangleCount) * 3; i += 3)
+            {
+                float tempT;
+                if (RayIntersectsTriangle(origin, direction, vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], tempT) && tempT < t && tempT > nearPlane)
+                {
+                    t = tempT;
+                    hitTriangle = i;
+                }
+            }
+        }
+        else
+        {
+            stack[stackIdx++] = node.leftChild;
+            stack[stackIdx++] = node.rightChild;
+        }
+    }
+    
+    return hitTriangle != -1;
+}
+
+void CreateFrustum(uint3 id, float3 rayDirCamera)
+{
     if (id.x == 0 && id.y == 0) frustumBuffer[0] = cameraPosition + rayDirCamera * nearPlane; // Near Bottom Left
     if (id.x == width - 1 && id.y == 0) frustumBuffer[1] = cameraPosition + rayDirCamera * nearPlane; // Near Bottom Right
     if (id.x == 0 && id.y == height - 1) frustumBuffer[2] = cameraPosition + rayDirCamera * nearPlane; // Near Top Left
@@ -80,36 +134,39 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if (id.x == width - 1 && id.y == 0) frustumBuffer[5] = cameraPosition + rayDirCamera * farPlane; // Far Bottom Right
     if (id.x == 0 && id.y == height - 1) frustumBuffer[6] = cameraPosition + rayDirCamera * farPlane; // Far Top Left
     if (id.x == width - 1 && id.y == height - 1) frustumBuffer[7] = cameraPosition + rayDirCamera * farPlane; // Far Top Right
+}
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= width || id.y >= height) return;
     
-    float closestT = farPlane;
-    bool hit = false;
-    float3 hitColor = float3(0, 0, 0);
+    float2 ndc = ((id.xy + 0.5) / float2(width, height)) * 2.0 - 1.0;
+    ndc.x *= aspectRatio;
+
+    float scale = tan(radians(fov * 0.5));
+    float3 rayDirCamera = float3(ndc.x * scale, ndc.y * scale, 1.0);
+
+    // CreateFrustum(id, rayDirCamera);
 
     float3 rayDirWorld = normalize(
         rayDirCamera.x * cameraRight +
         rayDirCamera.y * cameraUp +
         rayDirCamera.z * cameraForward
     );
-    
-    for (int i = 0; i < triangleCount * 3; i += 3)
-    {
-        float t;
-        if (RayIntersectsTriangle(cameraPosition, rayDirWorld, vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], t))
-        {
-            if (t < closestT && t >= nearPlane)
-            {
-                closestT = t;
-                hit = true;
-                hitColor = materialColors[materialIndices[i]];
-            }
-        }
-    }
 
-    float4 newColor = hit ? float4(hitColor, 1.0) : float4(0, 0, 0, 1.0);
-    if (sampleCount == 0)
-        accumBuffer[id.xy] = newColor;
-    else
-        accumBuffer[id.xy] = (accumBuffer[id.xy] * (sampleCount - 1) + newColor) / sampleCount;
+    int hitTriangle;
+    bool hit = TraverseBVH(cameraPosition, rayDirWorld, hitTriangle);
     
-    colorBuffer[id.xy] = accumBuffer[id.xy];
+    if (hit)
+    {
+        float3 hitColor = materialColors[materialIndices[hitTriangle]];
+        float4 newColor = float4(hitColor, 1.0);
+        accumBuffer[id.xy] = (sampleCount == 0) ? newColor : (accumBuffer[id.xy] * (sampleCount - 1) + newColor) / sampleCount;
+        colorBuffer[id.xy] = accumBuffer[id.xy];
+    }
+    else
+    {
+        colorBuffer[id.xy] = float4(0, 0, 0, 1.0);
+    }
 }

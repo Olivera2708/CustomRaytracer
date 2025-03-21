@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -11,6 +12,7 @@ public class RayTracingManager : MonoBehaviour
     private ComputeBuffer indexBuffer;
     private ComputeBuffer materialBuffer;
     private ComputeBuffer materialIndexBuffer;
+    private ComputeBuffer bvhBuffer;
     private RenderTexture accumTexture;
     
     private List<int> materialIndices = new List<int>();
@@ -23,6 +25,7 @@ public class RayTracingManager : MonoBehaviour
     private ComputeBuffer frustumBuffer;
     private Vector3[] frustumCorners = new Vector3[8];
     private RenderTexture renderTexture;
+    private BVH bvh;
 
     private int sampleCount = 0;
 
@@ -31,6 +34,9 @@ public class RayTracingManager : MonoBehaviour
         rayTracingCamera = Camera.main;
         GetSceneObjects();
         GetMaterials();
+        
+        bvh = new BVH(vertices, indices);
+        
         InitComputeBuffers();
         InitRenderTexture();
     }
@@ -101,11 +107,13 @@ public class RayTracingManager : MonoBehaviour
         if (indexBuffer != null) indexBuffer.Release();
         if (materialBuffer != null) materialBuffer.Release();
         if (materialIndexBuffer != null) materialIndexBuffer.Release();
+        if (bvhBuffer != null) bvhBuffer.Release();
     
         vertexBuffer = new ComputeBuffer(vertices.Count, sizeof(float) * 3);
         indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
         materialBuffer = new ComputeBuffer(materialColors.Count, sizeof(float) * 3);
         materialIndexBuffer  = new ComputeBuffer(materialIndices.Count, sizeof(int));
+        bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 4 + sizeof(float) * 6);
     
         int totalPixels = Screen.width * Screen.height;
         triangleCount = indices.Count / 3;
@@ -114,6 +122,7 @@ public class RayTracingManager : MonoBehaviour
         indexBuffer.SetData(indices);
         materialBuffer.SetData(materialColors);
         materialIndexBuffer.SetData(materialIndices);
+        bvhBuffer.SetData(bvh.nodes);
         hitResults = new int[totalPixels];
         
         if (frustumBuffer != null) frustumBuffer.Release();
@@ -149,6 +158,7 @@ public class RayTracingManager : MonoBehaviour
         rayTracingShader.SetBuffer(0, "indices", indexBuffer);
         rayTracingShader.SetBuffer(0, "materialColors", materialBuffer);
         rayTracingShader.SetBuffer(0, "materialIndices", materialIndexBuffer);
+        rayTracingShader.SetBuffer(0, "bvhNodes", bvhBuffer);
         
         rayTracingShader.SetVector("cameraPosition", rayTracingCamera.transform.position);
         rayTracingShader.SetVector("cameraRight", rayTracingCamera.transform.right);
@@ -161,8 +171,8 @@ public class RayTracingManager : MonoBehaviour
         
         rayTracingShader.SetInt("sampleCount", sampleCount);
 
-        int threadGroupsX = Mathf.CeilToInt(Screen.width / 16.0f);
-        int threadGroupsY = Mathf.CeilToInt(Screen.height / 16.0f);
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
         rayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
         
         sampleCount++;
@@ -184,7 +194,8 @@ public class RayTracingManager : MonoBehaviour
 
     void FixedUpdate()
     {
-        DispatchComputeShader();
+        if (sampleCount < 1000)
+            DispatchComputeShader();
     }
     
     void OnRenderImage(RenderTexture src, RenderTexture dest)
@@ -200,5 +211,6 @@ public class RayTracingManager : MonoBehaviour
         if (frustumBuffer != null) frustumBuffer.Release();
         if (materialBuffer != null) materialBuffer.Release();
         if (materialIndexBuffer != null) materialIndexBuffer.Release();
+        if (bvhBuffer != null) bvhBuffer.Release();
     }
 }
