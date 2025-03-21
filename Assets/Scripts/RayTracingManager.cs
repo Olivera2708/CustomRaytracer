@@ -194,7 +194,7 @@ public class RayTracingManager : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (sampleCount < 1000)
+        if (sampleCount < 1)
             DispatchComputeShader();
     }
     

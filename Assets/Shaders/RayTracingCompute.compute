@@ -143,33 +143,47 @@ void CreateFrustum(uint3 id, float3 rayDirCamera)
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= width || id.y >= height) return;
-    
-    float2 ndc = ((id.xy + 0.5) / float2(width, height)) * 2.0 - 1.0;
-    ndc.x *= aspectRatio;
 
-    float scale = tan(radians(fov * 0.5));
-    float3 rayDirCamera = float3(ndc.x * scale, ndc.y * scale, 1.0);
+    float3 finalColor = float3(0, 0, 0);
+    int samplesPerPixel = 4;
 
-    // CreateFrustum(id, rayDirCamera);
-
-    float3 rayDirWorld = normalize(
-        rayDirCamera.x * cameraRight +
-        rayDirCamera.y * cameraUp +
-        rayDirCamera.z * cameraForward
-    );
-
-    int hitTriangle;
-    bool hit = TraverseBVH(cameraPosition, rayDirWorld, hitTriangle);
-    
-    if (hit)
+    for (uint i = 0; i < samplesPerPixel; i++)
     {
-        float3 hitColor = materialColors[materialIndices[hitTriangle]];
-        float4 newColor = float4(hitColor, 1.0);
-        accumBuffer[id.xy] = (sampleCount == 0) ? newColor : (accumBuffer[id.xy] * (sampleCount - 1) + newColor) / sampleCount;
-        colorBuffer[id.xy] = accumBuffer[id.xy];
+        for (uint j = 0; j < samplesPerPixel; j++)
+        {
+            float2 jitter = float2((i + 0.5) / samplesPerPixel, (j + 0.5) / samplesPerPixel);
+            float2 ndc = ((id.xy + jitter) / float2(width, height)) * 2.0 - 1.0;
+            ndc.x *= aspectRatio;
+    
+            float scale = tan(radians(fov * 0.5));
+            float3 rayDirCamera = float3(ndc.x * scale, ndc.y * scale, 1.0);
+    
+            float3 rayDirWorld = normalize(
+                rayDirCamera.x * cameraRight +
+                rayDirCamera.y * cameraUp +
+                rayDirCamera.z * cameraForward
+            );
+    
+            int hitTriangle;
+            bool hit = TraverseBVH(cameraPosition, rayDirWorld, hitTriangle);
+    
+            if (hit)
+            {
+                float3 hitColor = materialColors[materialIndices[hitTriangle]];
+                finalColor += hitColor;
+            }
+        }
+    }
+    
+    finalColor /= (samplesPerPixel * samplesPerPixel);
+    if (sampleCount == 0)
+    {
+        accumBuffer[id.xy] = float4(finalColor, 1.0);
     }
     else
     {
-        colorBuffer[id.xy] = float4(0, 0, 0, 1.0);
+        float blendFactor = 1.0 / (sampleCount + 1);
+        accumBuffer[id.xy] = accumBuffer[id.xy] * (1.0 - blendFactor) + float4(finalColor, 1.0) * blendFactor;
     }
+    colorBuffer[id.xy] = accumBuffer[id.xy];
 }
