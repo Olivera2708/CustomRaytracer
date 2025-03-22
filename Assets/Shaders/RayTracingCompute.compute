@@ -40,6 +40,7 @@ StructuredBuffer<int> materialIndices;
 StructuredBuffer<float3> materialColors;
 StructuredBuffer<BVHNode> bvhNodes;
 StructuredBuffer<LightObject> lights;
+StructuredBuffer<float3> normals;
 
 RWTexture2D<float4> accumBuffer;
 int sampleCount;
@@ -83,7 +84,7 @@ bool IntersectAABB(float3 origin, float3 invDir, float3 minBounds, float3 maxBou
 }
 
 // Möller–Trumbore intersection algorithm
-bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1, float3 v2, out float t)
+bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1, float3 v2, out float t, out float u, out float v)
 {
     float3 edge1 = v1 - v0;
     float3 edge2 = v2 - v0;
@@ -95,12 +96,12 @@ bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1
 
     float invDet = rcp(det);
     float3 s = origin - v0;
-    float u = mad(dot(s, h), invDet, 0.0f);
+    u = mad(dot(s, h), invDet, 0.0f);
 
     if (u < 0.0f || u > 1.0f) return false;
 
     float3 q = cross(s, edge1);
-    float v = mad(dot(direction, q), invDet, 0.0f);
+    v = mad(dot(direction, q), invDet, 0.0f);
 
     if (v < 0.0f || u + v > 1.0f) return false;
 
@@ -110,12 +111,14 @@ bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1
 }
 
 // BVH
-bool TraverseBVH(float3 origin, float3 direction, out float hitDistance, out int hitTriangle)
+bool TraverseBVH(float3 origin, float3 direction, out float hitDistance, out int hitTriangle, out float hitU, out float hitV)
 {
     float3 invDir = rcp(direction);
     int nodeIndex = 0;
     hitTriangle = -1;
     hitDistance = farPlane;
+    hitU = 0;
+    hitV = 0;
 
     while (nodeIndex != -1)
     {
@@ -132,12 +135,14 @@ bool TraverseBVH(float3 origin, float3 direction, out float hitDistance, out int
         {
             for (uint i = node.firstTriangle * 3; i < (node.firstTriangle + node.triangleCount) * 3; i += 3)
             {
-                float tempT;
+                float tempT, u , v;
                 if (RayIntersectsTriangle(origin, direction, 
-                    vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], tempT) && tempT < hitDistance && tempT > nearPlane)
+                    vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], tempT, u, v) && tempT < hitDistance && tempT > nearPlane)
                 {
                     hitDistance = tempT;
                     hitTriangle = i;
+                    hitU = u;
+                    hitV = v;
                 }
             }
             nodeIndex = node.escapeIndex;
@@ -207,7 +212,8 @@ float IsInShadow(float3 origin, float3 normal, LightObject light)
 
         float shadowHitDistance;
         int shadowHitTriangle;
-        bool shadowHit = TraverseBVH(shadowOrigin, sampleLightDir, shadowHitDistance, shadowHitTriangle);
+        float u, v;
+        bool shadowHit = TraverseBVH(shadowOrigin, sampleLightDir, shadowHitDistance, shadowHitTriangle, u, v);
 
         bool isVisible = !shadowHit || shadowHitDistance > sampleDist;
         if (isVisible)
@@ -245,7 +251,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     
             int hitTriangle;
             float hitDistance;
-            bool hit = TraverseBVH(cameraPosition, rayDirWorld, hitDistance, hitTriangle);
+            float u, v;
+            bool hit = TraverseBVH(cameraPosition, rayDirWorld, hitDistance, hitTriangle, u, v);
             float3 litColor = float3(0, 0, 0);
             float3 hitPoint = cameraPosition + rayDirWorld * hitDistance;
 
@@ -253,7 +260,13 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             float3 v1 = vertices[indices[hitTriangle + 1]];
             float3 v2 = vertices[indices[hitTriangle + 2]];
 
-            float3 normal = normalize(cross(v1 - v0, v2 - v0));
+            float3 n0 = normals[indices[hitTriangle]];
+            float3 n1 = normals[indices[hitTriangle + 1]];
+            float3 n2 = normals[indices[hitTriangle + 2]];
+
+            float3 normal = normalize(cross(v1 - v0, v2 - v0)); // Not smooth
+            float w = 1.0f - u - v;
+            float3 interpolatedNormal = normalize(n0 * w + n1 * u + n2 * v);
     
             if (hit)
             {
@@ -272,7 +285,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
                     litColor += hitColor * light.color.rgb * light.intensity * NdotL * visibility;
                 }
 
-                finalColor += litColor + hitColor * 0.1; // Ambient light
+                finalColor += litColor + hitColor * 0.1; // With ambient light
             }
         }
     }

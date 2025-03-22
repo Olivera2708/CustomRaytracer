@@ -14,12 +14,14 @@ public class RayTracingManager : MonoBehaviour
     private ComputeBuffer materialIndexBuffer;
     private ComputeBuffer bvhBuffer;
     private ComputeBuffer lightBuffer;
+    private ComputeBuffer normalsBuffer;
     private RenderTexture accumTexture;
     
     private List<int> materialIndices = new List<int>();
     private List<Vector3> materialColors = new List<Vector3>();
     private List<Vector3> vertices = new List<Vector3>();
     private List<int> indices = new List<int>();
+    private List<Vector3> normals = new List<Vector3>();
     private List<LightObject> lightObjects = new List<LightObject>();
     private int[] hitResults;
     private int triangleCount;
@@ -35,7 +37,6 @@ public class RayTracingManager : MonoBehaviour
     {
         rayTracingCamera = Camera.main;
         GetSceneObjects();
-        GetMaterials();
         GetLights();
         
         bvh = new BVH(vertices, indices);
@@ -73,23 +74,10 @@ public class RayTracingManager : MonoBehaviour
                 direction = dir,
                 color = light.color,
                 intensity = light.intensity,
-                radius = radius
+                radius = radius // If set to 0 then hard shadows
             };
             
             lightObjects.Add(lightObject);
-        }
-    }
-
-    void GetMaterials()
-    {
-        materialColors.Clear();
-        MeshRenderer[] meshes = FindObjectsOfType<MeshRenderer>();
-
-        foreach (var mesh in meshes)
-        {
-            Material mat = mesh.sharedMaterial;
-            Color color = mat.color.linear;
-            materialColors.Add(new Vector3(color.r, color.g, color.b));
         }
     }
 
@@ -98,27 +86,41 @@ public class RayTracingManager : MonoBehaviour
         vertices.Clear();
         indices.Clear();
         materialIndices.Clear();
-        int objectIndex = 0;
+        materialColors.Clear();
+        int materialIndexCounter = 0;
     
         MeshRenderer[] meshes = FindObjectsOfType<MeshRenderer>();
         foreach (var mesh in meshes)
         {
             MeshFilter meshFilter = mesh.GetComponent<MeshFilter>();
             if (meshFilter == null || meshFilter.sharedMesh == null) continue;
-    
+
             Mesh meshData = meshFilter.sharedMesh;
             int vertexOffset = vertices.Count;
     
             foreach (Vector3 vertex in meshData.vertices)
                 vertices.Add(mesh.transform.TransformPoint(vertex));
-    
-            foreach (int index in meshData.triangles)
+            
+            foreach (Vector3 normal in meshData.normals)
+                normals.Add(mesh.transform.TransformDirection(normal));
+            
+            for (int submesh = 0; submesh < meshData.subMeshCount; submesh++)
             {
-                indices.Add(index + vertexOffset);
-                materialIndices.Add(objectIndex);
+                Material[] sharedMats = mesh.sharedMaterials;
+                Color color = (submesh < sharedMats.Length)
+                    ? sharedMats[submesh].color.linear
+                    : Color.gray;
+                materialColors.Add(new Vector3(color.r, color.g, color.b));
+
+                int[] submeshTriangles = meshData.GetTriangles(submesh);
+                foreach (int index in submeshTriangles)
+                {
+                    indices.Add(index + vertexOffset);
+                    materialIndices.Add(materialIndexCounter);
+                }
+                
+                materialIndexCounter++;
             }
-    
-            objectIndex++;
         }
     }
 
@@ -149,6 +151,7 @@ public class RayTracingManager : MonoBehaviour
         if (materialIndexBuffer != null) materialIndexBuffer.Release();
         if (bvhBuffer != null) bvhBuffer.Release();
         if (lightBuffer != null) lightBuffer.Release();
+        if (normalsBuffer != null) normalsBuffer.Release();
     
         vertexBuffer = new ComputeBuffer(vertices.Count, sizeof(float) * 3);
         indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
@@ -156,6 +159,7 @@ public class RayTracingManager : MonoBehaviour
         materialIndexBuffer  = new ComputeBuffer(materialIndices.Count, sizeof(int));
         bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 5 + sizeof(float) * 6);
         lightBuffer = new ComputeBuffer(lightObjects.Count, sizeof(int) + sizeof(float) * 12);
+        normalsBuffer = new ComputeBuffer(normals.Count, sizeof(float) * 3);
     
         int totalPixels = Screen.width * Screen.height;
         triangleCount = indices.Count / 3;
@@ -204,6 +208,7 @@ public class RayTracingManager : MonoBehaviour
         rayTracingShader.SetBuffer(0, "materialIndices", materialIndexBuffer);
         rayTracingShader.SetBuffer(0, "bvhNodes", bvhBuffer);
         rayTracingShader.SetBuffer(0, "lights", lightBuffer);
+        rayTracingShader.SetBuffer(0, "normals", normalsBuffer);
         
         rayTracingShader.SetVector("cameraPosition", rayTracingCamera.transform.position);
         rayTracingShader.SetVector("cameraRight", rayTracingCamera.transform.right);
@@ -258,5 +263,6 @@ public class RayTracingManager : MonoBehaviour
         if (materialIndexBuffer != null) materialIndexBuffer.Release();
         if (bvhBuffer != null) bvhBuffer.Release();
         if (lightBuffer != null) lightBuffer.Release();
+        if (normalsBuffer != null) normalsBuffer.Release();
     }
 }
