@@ -11,8 +11,18 @@ struct BVHNode
     int escapeIndex;
 };
 
+struct LightObject
+{
+    int type;
+    float3 position;
+    float3 direction;
+    float4 color;
+    float intensity;
+};
+
 int width, height;
 int triangleCount;
+int lightCount;
 
 float3 cameraPosition;
 float3 cameraRight;
@@ -28,6 +38,7 @@ StructuredBuffer<int> indices;
 StructuredBuffer<int> materialIndices;
 StructuredBuffer<float3> materialColors;
 StructuredBuffer<BVHNode> bvhNodes;
+StructuredBuffer<LightObject> lights;
 
 RWTexture2D<float4> accumBuffer;
 int sampleCount;
@@ -83,19 +94,19 @@ bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1
 }
 
 // BVH
-bool TraverseBVH(float3 origin, float3 direction, out int hitTriangle)
+bool TraverseBVH(float3 origin, float3 direction, out float hitDistance, out int hitTriangle)
 {
     float3 invDir = rcp(direction);
     int nodeIndex = 0;
     hitTriangle = -1;
-    float t = farPlane;
+    hitDistance = farPlane;
 
     while (nodeIndex != -1)
     {
         BVHNode node = bvhNodes[nodeIndex];
 
         float tmin;
-        if (!IntersectAABB(origin, invDir, node.minBounds, node.maxBounds, tmin) || tmin > t)
+        if (!IntersectAABB(origin, invDir, node.minBounds, node.maxBounds, tmin) || tmin > hitDistance)
         {
             nodeIndex = node.escapeIndex;
             continue;
@@ -107,9 +118,9 @@ bool TraverseBVH(float3 origin, float3 direction, out int hitTriangle)
             {
                 float tempT;
                 if (RayIntersectsTriangle(origin, direction, 
-                    vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], tempT) && tempT < t && tempT > nearPlane)
+                    vertices[indices[i]], vertices[indices[i+1]], vertices[indices[i+2]], tempT) && tempT < hitDistance && tempT > nearPlane)
                 {
-                    t = tempT;
+                    hitDistance = tempT;
                     hitTriangle = i;
                 }
             }
@@ -124,7 +135,6 @@ bool TraverseBVH(float3 origin, float3 direction, out int hitTriangle)
     return hitTriangle != -1;
 }
 
-
 void CreateFrustum(uint3 id, float3 rayDirCamera)
 {
     if (id.x == 0 && id.y == 0) frustumBuffer[0] = cameraPosition + rayDirCamera * nearPlane; // Near Bottom Left
@@ -137,6 +147,31 @@ void CreateFrustum(uint3 id, float3 rayDirCamera)
     if (id.x == 0 && id.y == height - 1) frustumBuffer[6] = cameraPosition + rayDirCamera * farPlane; // Far Top Left
     if (id.x == width - 1 && id.y == height - 1) frustumBuffer[7] = cameraPosition + rayDirCamera * farPlane; // Far Top Right
 }
+
+bool IsInShadow(float3 origin, float3 normal, LightObject light)
+{
+    float3 lightDir;
+    float lightDistance;
+
+    if (light.type == 0) // Directinal
+    {
+        lightDir = normalize(light.direction);
+    }
+    else // Point and Spot
+    {
+        float3 toLight = light.position - origin;
+        lightDir = normalize(toLight);
+        lightDistance = length(toLight);
+    }
+
+    float3 shadowOrigin = origin + normal * 0.001f;
+    float shadowHitDistance;
+    int shadowHitTriangle;
+
+    bool hit = TraverseBVH(shadowOrigin, lightDir, shadowHitDistance, shadowHitTriangle);
+    return hit && (light.type != 0 && shadowHitDistance < lightDistance);
+}
+
 
 [numthreads(16, 16, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -164,17 +199,42 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             );
     
             int hitTriangle;
-            bool hit = TraverseBVH(cameraPosition, rayDirWorld, hitTriangle);
+            float hitDistance;
+            bool hit = TraverseBVH(cameraPosition, rayDirWorld, hitDistance, hitTriangle);
+            float3 litColor = float3(0, 0, 0);
+            float3 hitPoint = cameraPosition + rayDirWorld * hitDistance;
+
+            float3 v0 = vertices[indices[hitTriangle]];
+            float3 v1 = vertices[indices[hitTriangle + 1]];
+            float3 v2 = vertices[indices[hitTriangle + 2]];
+
+            float3 normal = normalize(cross(v1 - v0, v2 - v0));
     
             if (hit)
             {
                 float3 hitColor = materialColors[materialIndices[hitTriangle]];
-                finalColor += hitColor;
+            
+                for (uint i = 0; i < lightCount; i++)
+                {
+                    LightObject light = lights[i];
+                    if (!IsInShadow(hitPoint, normal, light))
+                    {
+                        float3 lightDir = (light.type == 0)
+                            ? normalize(light.direction)
+                    : normalize(light.position - hitPoint);
+                    
+                        float NdotL = max(dot(normal, lightDir), 0.0);
+                        litColor += hitColor * light.color * light.intensity * NdotL;
+                    }
+                }
+
+                finalColor += litColor;// + hitColor * 0.1; // Ambient light
             }
         }
     }
     
     finalColor /= (samplesPerPixel * samplesPerPixel);
+    finalColor = clamp(finalColor, 0.0, 1.0);
     if (sampleCount == 0)
     {
         accumBuffer[id.xy] = float4(finalColor, 1.0);
