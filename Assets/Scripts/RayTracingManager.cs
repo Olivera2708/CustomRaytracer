@@ -63,6 +63,8 @@ public class RayTracingManager : MonoBehaviour
             Vector3 dir = light.type is LightType.Directional or LightType.Spot
                 ? -light.transform.forward
                 : Vector3.zero;
+
+            float radius = light.type is LightType.Directional ? 0.7f : 0.3f;
             
             LightObject lightObject = new LightObject
             {
@@ -70,7 +72,8 @@ public class RayTracingManager : MonoBehaviour
                 position = light.transform.position,
                 direction = dir,
                 color = light.color,
-                intensity = light.intensity
+                intensity = light.intensity,
+                radius = radius
             };
             
             lightObjects.Add(lightObject);
@@ -152,7 +155,7 @@ public class RayTracingManager : MonoBehaviour
         materialBuffer = new ComputeBuffer(materialColors.Count, sizeof(float) * 3);
         materialIndexBuffer  = new ComputeBuffer(materialIndices.Count, sizeof(int));
         bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 5 + sizeof(float) * 6);
-        lightBuffer = new ComputeBuffer(lightObjects.Count, sizeof(int) + sizeof(float) * 11);
+        lightBuffer = new ComputeBuffer(lightObjects.Count, sizeof(int) + sizeof(float) * 12);
     
         int totalPixels = Screen.width * Screen.height;
         triangleCount = indices.Count / 3;

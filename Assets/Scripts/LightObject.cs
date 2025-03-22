@@ -7,4 +7,5 @@ public struct LightObject
     public Vector3 direction;
     public Vector4 color;
     public float intensity;
+    public float radius;
 }

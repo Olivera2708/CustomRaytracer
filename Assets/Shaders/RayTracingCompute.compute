@@ -18,6 +18,7 @@ struct LightObject
     float3 direction;
     float4 color;
     float intensity;
+    float radius;
 };
 
 int width, height;
@@ -51,6 +52,21 @@ struct Ray
     float3 origin;
     float3 direction;
 };
+
+float2 SampleDisk(float2 u)
+{
+    float r = sqrt(u.x);
+    float theta = 2.0 * 3.14159265 * u.y;
+    return float2(r * cos(theta), r * sin(theta));
+}
+
+float3 SampleSphere(float2 u)
+{
+    float z = 1.0 - 2.0 * u.x;
+    float r = sqrt(max(0.0, 1.0 - z * z));
+    float phi = 2.0 * 3.14159265 * u.y;
+    return float3(r * cos(phi), r * sin(phi), z);
+}
 
 bool IntersectAABB(float3 origin, float3 invDir, float3 minBounds, float3 maxBounds, out float tmin)
 {
@@ -148,28 +164,57 @@ void CreateFrustum(uint3 id, float3 rayDirCamera)
     if (id.x == width - 1 && id.y == height - 1) frustumBuffer[7] = cameraPosition + rayDirCamera * farPlane; // Far Top Right
 }
 
-bool IsInShadow(float3 origin, float3 normal, LightObject light)
+float IsInShadow(float3 origin, float3 normal, LightObject light)
 {
     float3 lightDir;
     float lightDistance;
+    
+    int numSamples = (light.radius > 0.0f) ? 16 : 1;
+    int visible = 0;
 
-    if (light.type == 0) // Directinal
+    for (uint i = 0; i < numSamples; i++)
     {
-        lightDir = normalize(light.direction);
-    }
-    else // Point and Spot
-    {
-        float3 toLight = light.position - origin;
-        lightDir = normalize(toLight);
-        lightDistance = length(toLight);
+        float2 rnd = float2(frac(sin(i * 12.9898) * 43758.5453), frac(sin((i + 1) * 78.233) * 12345.6789));
+
+        float3 sampleLightPos;
+        float3 sampleLightDir;
+        float3 shadowOrigin;
+        float sampleDist;
+        
+        if (light.type == 0) // Directinal
+        {
+            float3 up = abs(light.direction.y) < 0.99 ? float3(0, 1, 0) : float3(1, 0, 0);
+            float3 tangent = normalize(cross(up, light.direction));
+            float3 bitangent = cross(light.direction, tangent);
+
+            float2 offset2D = SampleDisk(rnd) * light.radius;
+            float3 offset = tangent * offset2D.x + bitangent * offset2D.y;
+
+            sampleLightDir = normalize(light.direction);
+            sampleLightPos = origin + offset;
+            sampleDist = 1e20f; // infinite
+        }
+        else // Point and Spot
+        {
+            float3 offset = SampleSphere(rnd) * light.radius;
+            sampleLightPos = light.position + offset;
+
+            sampleLightDir = normalize(sampleLightPos - origin);
+            sampleDist = length(sampleLightPos - origin);
+        }
+
+        shadowOrigin = origin + normal * 0.001f;
+
+        float shadowHitDistance;
+        int shadowHitTriangle;
+        bool shadowHit = TraverseBVH(shadowOrigin, sampleLightDir, shadowHitDistance, shadowHitTriangle);
+
+        bool isVisible = !shadowHit || shadowHitDistance > sampleDist;
+        if (isVisible)
+            visible++;
     }
 
-    float3 shadowOrigin = origin + normal * 0.001f;
-    float shadowHitDistance;
-    int shadowHitTriangle;
-
-    bool hit = TraverseBVH(shadowOrigin, lightDir, shadowHitDistance, shadowHitTriangle);
-    return hit && (light.type != 0 && shadowHitDistance < lightDistance);
+    return visible / (float)numSamples;
 }
 
 
@@ -217,18 +262,17 @@ void CSMain(uint3 id : SV_DispatchThreadID)
                 for (uint i = 0; i < lightCount; i++)
                 {
                     LightObject light = lights[i];
-                    if (!IsInShadow(hitPoint, normal, light))
-                    {
-                        float3 lightDir = (light.type == 0)
-                            ? normalize(light.direction)
-                    : normalize(light.position - hitPoint);
-                    
-                        float NdotL = max(dot(normal, lightDir), 0.0);
-                        litColor += hitColor * light.color * light.intensity * NdotL;
-                    }
+                    float visibility = IsInShadow(hitPoint, normal, light);
+
+                    float3 lightDir = (light.type == 0)
+                        ? normalize(light.direction)
+                        : normalize(light.position - hitPoint);
+
+                    float NdotL = max(dot(normal, lightDir), 0.0);
+                    litColor += hitColor * light.color.rgb * light.intensity * NdotL * visibility;
                 }
 
-                finalColor += litColor;// + hitColor * 0.1; // Ambient light
+                finalColor += litColor + hitColor * 0.1; // Ambient light
             }
         }
     }
