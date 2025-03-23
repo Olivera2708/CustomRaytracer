@@ -24,6 +24,8 @@ struct LightObject
 struct MaterialObject
 {
     float4 color;
+    float shininess;
+    float4 specularColor;
 };
 
 int width, height;
@@ -291,7 +293,6 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             float3 n1 = normals[indices[hitTriangle + 1]];
             float3 n2 = normals[indices[hitTriangle + 2]];
 
-            float3 normal = normalize(cross(v1 - v0, v2 - v0)); // Not smooth
             float3 smoothNormal = normalize(
                 barycentric.x * n0 +
                 barycentric.y * n1 +
@@ -300,7 +301,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     
             if (hit)
             {
-                float3 hitColor = materialColors[materialIndices[hitTriangle]].color;
+                MaterialObject mat = materialColors[materialIndices[hitTriangle]];
             
                 for (uint i = 0; i < lightCount; i++)
                 {
@@ -311,6 +312,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
                         ? normalize(light.direction)
                         : normalize(light.position - hitPoint);
 
+                    float3 viewDir = normalize(cameraPosition - hitPoint);
+                    float3 reflectDir = reflect(-lightDir, smoothNormal);
+                    float specAmount = pow(max(dot(viewDir, reflectDir), 0.0), mat.shininess);
+                    float3 specular = mat.specularColor.rgb * light.color.rgb * light.intensity * specAmount;
+
                     float attenuation = 5.0;
                     if (light.type != 0) // point light fades in distance
                     {
@@ -319,10 +325,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
                     }
 
                     float NdotL = max(dot(smoothNormal, lightDir), 0.0);
-                    litColor += hitColor * light.color.rgb * light.intensity * NdotL * visibility * attenuation;
+                    float3 diffuse = mat.color.rgb * light.color.rgb * light.intensity * NdotL;
+                    litColor += (diffuse + specular) * visibility * attenuation;
                 }
 
-                finalColor += litColor + hitColor * 0.1; // With ambient light
+                finalColor += litColor + mat.color.rgb * 0.1; // With ambient light
             }
         }
     }

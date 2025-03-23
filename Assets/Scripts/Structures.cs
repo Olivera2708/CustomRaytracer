@@ -18,4 +18,6 @@ public struct Triangle
 public struct MaterialObject
 {
     public Vector4 color;
+    public float shininess;
+    public Vector4 specularColor;
 }

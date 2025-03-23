@@ -18,7 +18,7 @@ public class RayTracingManager : MonoBehaviour
     private RenderTexture accumTexture;
     
     private List<int> materialIndices = new List<int>();
-    private List<MaterialObject> materialColors = new List<MaterialObject>();
+    private List<MaterialObject> materialObjects = new List<MaterialObject>();
     private List<Vector3> vertices = new List<Vector3>();
     private List<int> indices = new List<int>();
     private List<Vector3> normals = new List<Vector3>();
@@ -65,7 +65,7 @@ public class RayTracingManager : MonoBehaviour
                 ? -light.transform.forward
                 : Vector3.zero;
 
-            float radius = light.type is LightType.Directional ? 0.7f : 0.3f;
+            float radius = light.type is LightType.Directional ? 0.7f : 0.1f;
             
             LightObject lightObject = new LightObject
             {
@@ -86,7 +86,7 @@ public class RayTracingManager : MonoBehaviour
         vertices.Clear();
         indices.Clear();
         materialIndices.Clear();
-        materialColors.Clear();
+        materialObjects.Clear();
         normals.Clear();
         int materialIndexCounter = 0;
     
@@ -111,7 +111,29 @@ public class RayTracingManager : MonoBehaviour
                 Color color = (submesh < sharedMats.Length)
                     ? sharedMats[submesh].color.linear
                     : Color.gray;
-                materialColors.Add(new MaterialObject{color = new Vector4(color.r, color.g, color.b, color.a)});
+                
+                float metallic = sharedMats[submesh].HasProperty("_Metallic") 
+                    ? sharedMats[submesh].GetFloat("_Metallic") 
+                    : 0f;
+                float glossiness = sharedMats[submesh].HasProperty("_Glossiness") 
+                    ? sharedMats[submesh].GetFloat("_Glossiness") 
+                    : 0.5f;
+                
+                float shininess = (glossiness > 0.5f)
+                    ? Mathf.Lerp(32f, 64f, glossiness)
+                    : Mathf.Lerp(2f, 8f, glossiness);
+
+                Color metallicSpec = color * Mathf.Lerp(1.0f, 10.0f, glossiness);
+                Color specularColor = Color.Lerp(new Color(0.04f, 0.04f, 0.04f), metallicSpec, metallic);
+                Color diffuseColor = Color.Lerp(color, color * 0.6f, metallic);
+
+                
+                materialObjects.Add(new MaterialObject
+                {
+                    color = new Vector4(diffuseColor.r, diffuseColor.g, diffuseColor.b, 1.0f),
+                    specularColor = new Vector4(specularColor.r, specularColor.g, specularColor.b, 1.0f),
+                    shininess = shininess
+                });
 
                 int[] submeshTriangles = meshData.GetTriangles(submesh);
                 foreach (int index in submeshTriangles)
@@ -156,7 +178,7 @@ public class RayTracingManager : MonoBehaviour
     
         vertexBuffer = new ComputeBuffer(vertices.Count, sizeof(float) * 3);
         indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
-        materialBuffer = new ComputeBuffer(materialColors.Count, sizeof(float) * 4);
+        materialBuffer = new ComputeBuffer(materialObjects.Count, sizeof(float) * 9);
         materialIndexBuffer  = new ComputeBuffer(materialIndices.Count, sizeof(int));
         bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 5 + sizeof(float) * 6);
         lightBuffer = new ComputeBuffer(lightObjects.Count, sizeof(int) + sizeof(float) * 12);
@@ -167,7 +189,7 @@ public class RayTracingManager : MonoBehaviour
     
         vertexBuffer.SetData(vertices);
         indexBuffer.SetData(indices);
-        materialBuffer.SetData(materialColors);
+        materialBuffer.SetData(materialObjects);
         materialIndexBuffer.SetData(materialIndices);
         bvhBuffer.SetData(bvh.nodes);
         lightBuffer.SetData(lightObjects);
