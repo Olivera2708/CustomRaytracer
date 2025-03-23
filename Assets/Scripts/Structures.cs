@@ -9,3 +9,8 @@ public struct LightObject
     public float intensity;
     public float radius;
 }
+
+public struct Triangle
+{
+    public Vector3 v0, v1, v2;
+}

@@ -34,7 +34,7 @@ namespace DefaultNamespace
                 Vector3 v1 = TransformToWorld(vertices[triangle[i + 1]]);
                 Vector3 v2 = TransformToWorld(vertices[triangle[i + 2]]);
                 
-                triangles.Add(new Triangle(v0, v1, v2));
+                triangles.Add(new Triangle{v0=v0, v1=v1, v2=v2});
             }
         }
         
