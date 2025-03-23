@@ -281,8 +281,15 @@ void CSMain(uint3 id : SV_DispatchThreadID)
                         ? normalize(light.direction)
                         : normalize(light.position - hitPoint);
 
+                    float attenuation = 5.0;
+                    if (light.type != 0) // point light fades in distance
+                    {
+                        float distance = length(light.position - hitPoint);
+                        attenuation = 5.0 / (distance * distance);
+                    }
+
                     float NdotL = max(dot(normal, lightDir), 0.0);
-                    litColor += hitColor * light.color.rgb * light.intensity * NdotL * visibility;
+                    litColor += hitColor * light.color.rgb * light.intensity * NdotL * visibility * attenuation;
                 }
 
                 finalColor += litColor + hitColor * 0.1; // With ambient light
