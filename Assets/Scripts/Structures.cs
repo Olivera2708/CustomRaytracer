@@ -14,3 +14,8 @@ public struct Triangle
 {
     public Vector3 v0, v1, v2;
 }
+
+public struct MaterialObject
+{
+    public Vector4 color;
+}

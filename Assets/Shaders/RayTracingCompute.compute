@@ -21,6 +21,11 @@ struct LightObject
     float radius;
 };
 
+struct MaterialObject
+{
+    float4 color;
+};
+
 int width, height;
 int triangleCount;
 int lightCount;
@@ -37,7 +42,7 @@ float farPlane;
 StructuredBuffer<float3> vertices;
 StructuredBuffer<int> indices;
 StructuredBuffer<int> materialIndices;
-StructuredBuffer<float3> materialColors;
+StructuredBuffer<MaterialObject> materialColors;
 StructuredBuffer<BVHNode> bvhNodes;
 StructuredBuffer<LightObject> lights;
 StructuredBuffer<float3> normals;
@@ -223,6 +228,26 @@ float IsInShadow(float3 origin, float3 normal, LightObject light)
     return visible / (float)numSamples;
 }
 
+float3 ComputeBarycentric(float3 hitPoint, float3 v0, float3 v1, float3 v2)
+{
+    float3 v0v1 = v1 - v0;
+    float3 v0v2 = v2 - v0;
+    float3 v0p  = hitPoint - v0;
+
+    float d00 = dot(v0v1, v0v1);
+    float d01 = dot(v0v1, v0v2);
+    float d11 = dot(v0v2, v0v2);
+    float d20 = dot(v0p, v0v1);
+    float d21 = dot(v0p, v0v2);
+
+    float denom = d00 * d11 - d01 * d01;
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u = 1.0 - v - w;
+
+    return float3(u, v, w);
+}
+
 
 [numthreads(16, 16, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -260,22 +285,27 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             float3 v1 = vertices[indices[hitTriangle + 1]];
             float3 v2 = vertices[indices[hitTriangle + 2]];
 
+            float3 barycentric = ComputeBarycentric(hitPoint, v0, v1, v2);
+
             float3 n0 = normals[indices[hitTriangle]];
             float3 n1 = normals[indices[hitTriangle + 1]];
             float3 n2 = normals[indices[hitTriangle + 2]];
 
             float3 normal = normalize(cross(v1 - v0, v2 - v0)); // Not smooth
-            float w = 1.0f - u - v;
-            float3 interpolatedNormal = normalize(n0 * w + n1 * u + n2 * v);
+            float3 smoothNormal = normalize(
+                barycentric.x * n0 +
+                barycentric.y * n1 +
+                barycentric.z * n2
+            );
     
             if (hit)
             {
-                float3 hitColor = materialColors[materialIndices[hitTriangle]];
+                float3 hitColor = materialColors[materialIndices[hitTriangle]].color;
             
                 for (uint i = 0; i < lightCount; i++)
                 {
                     LightObject light = lights[i];
-                    float visibility = IsInShadow(hitPoint, normal, light);
+                    float visibility = IsInShadow(hitPoint, smoothNormal, light);
 
                     float3 lightDir = (light.type == 0)
                         ? normalize(light.direction)
@@ -288,7 +318,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
                         attenuation = 5.0 / (distance * distance);
                     }
 
-                    float NdotL = max(dot(normal, lightDir), 0.0);
+                    float NdotL = max(dot(smoothNormal, lightDir), 0.0);
                     litColor += hitColor * light.color.rgb * light.intensity * NdotL * visibility * attenuation;
                 }
 

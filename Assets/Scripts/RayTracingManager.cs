@@ -18,7 +18,7 @@ public class RayTracingManager : MonoBehaviour
     private RenderTexture accumTexture;
     
     private List<int> materialIndices = new List<int>();
-    private List<Vector3> materialColors = new List<Vector3>();
+    private List<MaterialObject> materialColors = new List<MaterialObject>();
     private List<Vector3> vertices = new List<Vector3>();
     private List<int> indices = new List<int>();
     private List<Vector3> normals = new List<Vector3>();
@@ -87,6 +87,7 @@ public class RayTracingManager : MonoBehaviour
         indices.Clear();
         materialIndices.Clear();
         materialColors.Clear();
+        normals.Clear();
         int materialIndexCounter = 0;
     
         MeshRenderer[] meshes = FindObjectsOfType<MeshRenderer>();
@@ -110,7 +111,7 @@ public class RayTracingManager : MonoBehaviour
                 Color color = (submesh < sharedMats.Length)
                     ? sharedMats[submesh].color.linear
                     : Color.gray;
-                materialColors.Add(new Vector3(color.r, color.g, color.b));
+                materialColors.Add(new MaterialObject{color = new Vector4(color.r, color.g, color.b, color.a)});
 
                 int[] submeshTriangles = meshData.GetTriangles(submesh);
                 foreach (int index in submeshTriangles)
@@ -155,7 +156,7 @@ public class RayTracingManager : MonoBehaviour
     
         vertexBuffer = new ComputeBuffer(vertices.Count, sizeof(float) * 3);
         indexBuffer = new ComputeBuffer(indices.Count, sizeof(int));
-        materialBuffer = new ComputeBuffer(materialColors.Count, sizeof(float) * 3);
+        materialBuffer = new ComputeBuffer(materialColors.Count, sizeof(float) * 4);
         materialIndexBuffer  = new ComputeBuffer(materialIndices.Count, sizeof(int));
         bvhBuffer = new ComputeBuffer(bvh.nodes.Count, sizeof(int) * 5 + sizeof(float) * 6);
         lightBuffer = new ComputeBuffer(lightObjects.Count, sizeof(int) + sizeof(float) * 12);
@@ -171,6 +172,7 @@ public class RayTracingManager : MonoBehaviour
         bvhBuffer.SetData(bvh.nodes);
         lightBuffer.SetData(lightObjects);
         hitResults = new int[totalPixels];
+        normalsBuffer.SetData(normals);
         
         if (frustumBuffer != null) frustumBuffer.Release();
     
