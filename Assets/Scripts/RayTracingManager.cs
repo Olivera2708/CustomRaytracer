@@ -162,7 +162,12 @@ public class RayTracingManager : MonoBehaviour
                 else
                     shininess = Mathf.Lerp(2f, 8f, glossiness - 0.2f);
 
-                Color metallicSpec = color * Mathf.Lerp(1.0f, 10.0f, glossiness);
+                Color metallicSpec = color;
+                if (glossiness > 0.6f)
+                    metallicSpec *= Mathf.Lerp(1.0f, 50.0f, glossiness);
+                else
+                    metallicSpec *= Mathf.Lerp(1.0f, 5.0f, glossiness);
+                
                 Color specularColor = Color.Lerp(new Color(0.04f, 0.04f, 0.04f), metallicSpec, metallic);
                 Color diffuseColor = Color.Lerp(color, color * 0.6f, metallic);
 
