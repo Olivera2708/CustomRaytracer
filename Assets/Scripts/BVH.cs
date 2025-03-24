@@ -4,6 +4,17 @@ using UnityEngine;
 
 public struct BVHNode
 {
+    // Represents a node in the Bounding Volume Hierarchy (BVH).
+    //
+    // Fields:
+    //   minBounds: The minimum point of the node’s axis-aligned bounding box (AABB).
+    //   maxBounds: The maximum point of the node’s axis-aligned bounding box (AABB).
+    //   leftChild: Index of the left child node in the BVH tree. -1 if there is no child.
+    //   rightChild: Index of the right child node in the BVH tree. -1 if there is no child.
+    //   firstTriangle: Index of the first triangle associated with this node.
+    //   triangleCount: Number of triangles associated with this node.
+    //   escapeIndex: Index used to quickly skip over the subtree when traversing the BVH.
+
     public Vector3 minBounds;
     public Vector3 maxBounds;
     public int leftChild;
@@ -15,6 +26,19 @@ public struct BVHNode
 
 public class BVH
 {
+    // Constructs and manages a Bounding Volume Hierarchy (BVH) for efficient spatial queries.
+    //
+    // The BVH is built from a list of mesh vertices and triangle indices. It recursively partitions
+    // the geometry into a binary tree, where each node contains a bounding box and either triangle
+    // references or child nodes. This structure enables faster ray tracing and collision detection.
+    //
+    // Fields:
+    //   nodes: The list of BVH nodes forming the hierarchy.
+    //   triangles: Internal list of triangle indices used for building and partitioning.
+    //   vertices: Reference to the mesh vertices used to compute bounding volumes.
+    //
+    // The BVH constructor immediately starts building the tree upon creation.
+
     public List<BVHNode> nodes = new List<BVHNode>();
     private List<int> triangles;
     private List<Vector3> vertices;
@@ -28,6 +52,18 @@ public class BVH
     
     private int Build(int start, int count)
     {
+        // Recursively builds the BVH (Bounding Volume Hierarchy) starting from a given triangle range.
+        //
+        // Args:
+        //   start: The starting index of the triangle list to include in this node.
+        //   count: The number of triangles to include in this node.
+        //
+        // Returns:
+        //   The index of the newly created BVH node in the nodes list.
+        //
+        // This method calculates bounds for the current node, selects a splitting axis, 
+        // partitions triangles along that axis, and recursively builds left and right child nodes.
+
         BVHNode node = new BVHNode();
         node.firstTriangle = start;
         node.triangleCount = count;
@@ -67,6 +103,16 @@ public class BVH
     
     void ComputeBounds(ref BVHNode node, List<Vector3> vertices, List<int> indices)
     {
+        // Computes the axis-aligned bounding box (AABB) for the triangles in the given BVH node.
+        //
+        // Args:
+        //   node: Reference to the BVH node for which to compute bounds.
+        //   vertices: List of mesh vertex positions.
+        //   indices: List of triangle indices corresponding to vertices.
+        //
+        // This function updates the minBounds and maxBounds of the node by iterating
+        // over all triangles assigned to it.
+
         node.minBounds = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
         node.maxBounds = new Vector3(float.MinValue, float.MinValue, float.MinValue);
 
@@ -80,6 +126,17 @@ public class BVH
 
     int ChooseSplitAxis(BVHNode node)
     {
+        // Chooses the axis with the greatest extent of the bounding box for splitting the BVH node.
+        //
+        // Args:
+        //   node: The BVH node whose bounds are evaluated.
+        //
+        // Returns:
+        //   An integer representing the axis index:
+        //   0 for X, 1 for Y, 2 for Z.
+        //
+        // The axis is chosen based on the difference between maxBounds and minBounds.
+
         Vector3 extents = node.maxBounds - node.minBounds;
         return (extents.x > extents.y && extents.x > extents.z) ? 0 :
             (extents.y > extents.z) ? 1 : 2;
@@ -87,6 +144,21 @@ public class BVH
 
     int PartitionTrianglesMedian(List<Vector3> vertices, List<int> indices, int start, int count, int axis)
     {
+        // Partitions triangles in the given range around the median centroid along the specified axis.
+        //
+        // Args:
+        //   vertices: List of mesh vertex positions.
+        //   indices: List of triangle indices (modified in-place).
+        //   start: The starting index of the triangle range to partition.
+        //   count: The number of triangles to partition.
+        //   axis: The axis (0 = X, 1 = Y, 2 = Z) to use for computing centroids.
+        //
+        // Returns:
+        //   The index that splits the triangle list into left and right partitions.
+        //
+        // This method sorts triangles by the centroid position along the given axis,
+        // then rearranges triangle indices to group triangles spatially.
+
         List<Tuple<int, float>> centroids = new List<Tuple<int, float>>();
 
         for (int i = start; i < start + count; i++)

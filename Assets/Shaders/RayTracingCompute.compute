@@ -63,6 +63,14 @@ struct Ray
 
 float2 SampleDisk(float2 u)
 {
+    // Samples a point from a unit disk using polar coordinates.
+    //
+    // Args:
+    //   u: 2D uniform random input in [0, 1].
+    //
+    // Returns:
+    //   A 2D point on the unit disk.
+
     float r = sqrt(u.x);
     float theta = 2.0 * 3.14159265 * u.y;
     return float2(r * cos(theta), r * sin(theta));
@@ -70,6 +78,14 @@ float2 SampleDisk(float2 u)
 
 float3 SampleSphere(float2 u)
 {
+    // Samples a random direction on the unit sphere.
+    //
+    // Args:
+    //   u: 2D uniform random input.
+    //
+    // Returns:
+    //   A 3D unit vector pointing in a random direction.
+
     float z = 1.0 - 2.0 * u.x;
     float r = sqrt(max(0.0, 1.0 - z * z));
     float phi = 2.0 * 3.14159265 * u.y;
@@ -78,6 +94,17 @@ float3 SampleSphere(float2 u)
 
 bool IntersectAABB(float3 origin, float3 invDir, float3 minBounds, float3 maxBounds, out float tmin)
 {
+    // Checks for intersection between a ray and an axis-aligned bounding box.
+    //
+    // Args:
+    //   origin: Ray origin.
+    //   invDir: Inverse of ray direction.
+    //   minBounds, maxBounds: AABB min and max points.
+    //   tmin (out): Minimum hit distance.
+    //
+    // Returns:
+    //   True if the ray intersects the box.
+
     float3 t0 = (minBounds - origin) * invDir;
     float3 t1 = (maxBounds - origin) * invDir;
 
@@ -90,9 +117,19 @@ bool IntersectAABB(float3 origin, float3 invDir, float3 minBounds, float3 maxBou
     return tmax >= tmin && tmax > 0;
 }
 
-// Möller–Trumbore intersection algorithm
 bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1, float3 v2, out float t, out float u, out float v)
 {
+    // Checks if a ray intersects a triangle using the Möller–Trumbore algorithm.
+    //
+    // Args:
+    //   origin, direction: Ray parameters.
+    //   v0, v1, v2: Triangle vertices.
+    //   t (out): Intersection distance.
+    //   u, v (out): Barycentric coordinates.
+    //
+    // Returns:
+    //   True if intersection occurs.
+
     float3 edge1 = v1 - v0;
     float3 edge2 = v2 - v0;
 
@@ -117,9 +154,19 @@ bool RayIntersectsTriangle(float3 origin, float3 direction, float3 v0, float3 v1
     return t > 1e-5f;
 }
 
-// BVH
 bool TraverseBVH(float3 origin, float3 direction, out float hitDistance, out int hitTriangle, out float hitU, out float hitV)
 {
+    // Traverses the BVH to find the closest intersected triangle.
+    //
+    // Args:
+    //   origin, direction: Ray parameters.
+    //   hitDistance (out): Distance to intersection.
+    //   hitTriangle (out): Index of intersected triangle.
+    //   hitU, hitV (out): Barycentric coordinates of intersection.
+    //
+    // Returns:
+    //   True if any triangle is hit.
+
     float3 invDir = rcp(direction);
     int nodeIndex = 0;
     hitTriangle = -1;
@@ -165,6 +212,12 @@ bool TraverseBVH(float3 origin, float3 direction, out float hitDistance, out int
 
 void CreateFrustum(uint3 id, float3 rayDirCamera)
 {
+    // Stores frustum corners into a structured buffer (for debug).
+    //
+    // Args:
+    //   id: Current thread ID.
+    //   rayDirCamera: Ray direction from camera space.
+
     if (id.x == 0 && id.y == 0) frustumBuffer[0] = cameraPosition + rayDirCamera * nearPlane; // Near Bottom Left
     if (id.x == width - 1 && id.y == 0) frustumBuffer[1] = cameraPosition + rayDirCamera * nearPlane; // Near Bottom Right
     if (id.x == 0 && id.y == height - 1) frustumBuffer[2] = cameraPosition + rayDirCamera * nearPlane; // Near Top Left
@@ -178,9 +231,16 @@ void CreateFrustum(uint3 id, float3 rayDirCamera)
 
 float IsInShadow(float3 origin, float3 normal, LightObject light)
 {
-    float3 lightDir;
-    float lightDistance;
-    
+    // Calculates shadow visibility at a surface point using multiple samples (soft shadows).
+    //
+    // Args:
+    //   origin: World position of shading point.
+    //   normal: Normal at the shading point.
+    //   light: Light source information.
+    //
+    // Returns:
+    //   A value between 0 and 1 indicating how much the point is lit.
+
     int numSamples = (light.radius > 0.0f) ? 16 : 1;
     int visible = 0;
 
@@ -232,6 +292,15 @@ float IsInShadow(float3 origin, float3 normal, LightObject light)
 
 float3 ComputeBarycentric(float3 hitPoint, float3 v0, float3 v1, float3 v2)
 {
+    // Computes barycentric coordinates of a point on a triangle.
+    //
+    // Args:
+    //   hitPoint: The point in world space.
+    //   v0, v1, v2: Triangle vertices.
+    //
+    // Returns:
+    //   Barycentric coordinates as a float3 (u, v, w).
+
     float3 v0v1 = v1 - v0;
     float3 v0v2 = v2 - v0;
     float3 v0p  = hitPoint - v0;
@@ -250,10 +319,61 @@ float3 ComputeBarycentric(float3 hitPoint, float3 v0, float3 v1, float3 v2)
     return float3(u, v, w);
 }
 
+float3 CalculateShadow(LightObject light, float3 hitPoint, float3 normal, MaterialObject mat)
+{
+    // Computes diffuse and specular contribution from a single light, including soft shadowing.
+    //
+    // Args:
+    //   light: The light source to compute contribution from.
+    //   hitPoint: World position of the intersection.
+    //   normal: The surface normal at the hit point.
+    //   viewDir: Direction from surface point to camera.
+    //   mat: Material properties at the surface.
+    //
+    // Returns:
+    //   The final RGB color contribution from this light.
+
+    float visibility = IsInShadow(hitPoint, normal, light);
+
+    float3 lightDir = (light.type == 0)
+        ? normalize(light.direction)
+        : normalize(light.position - hitPoint);
+
+    float3 viewDir = normalize(cameraPosition - hitPoint);
+    float3 reflectDir = reflect(-lightDir, normal);
+    float specAmount = pow(max(dot(viewDir, reflectDir), 0.0), mat.shininess);
+    float3 specular = mat.specularColor.rgb * light.color.rgb * light.intensity * specAmount;
+
+    float attenuation = 5.0;
+    if (light.type != 0) // point light fades in distance
+    {
+        float distance = length(light.position - hitPoint);
+        attenuation = 5.0 / (distance * distance);
+    }
+
+    float NdotL = max(dot(normal, lightDir), 0.0);
+    float3 diffuse = mat.color.rgb * light.color.rgb * light.intensity * NdotL;
+    return (diffuse + specular) * visibility * attenuation;
+}
 
 [numthreads(16, 16, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
+    // Main compute shader entry point.
+    // Casts rays per pixel, intersects scene using BVH, evaluates shading,
+    // and accumulates results in a progressive render buffer.
+    //
+    // Args:
+    //   id: The thread ID for the current pixel (x, y).
+    //
+    // Pipeline:
+    //   - Generate ray based on screen-space pixel and FOV
+    //   - Traverse BVH to find closest triangle hit
+    //   - Calculate surface normal via barycentric interpolation
+    //   - Evaluate light contribution from all lights
+    //   - Perform soft shadow checks
+    //   - Accumulate result into render textures
+
     if (id.x >= width || id.y >= height) return;
 
     float3 finalColor = float3(0, 0, 0);
@@ -264,7 +384,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         for (uint j = 0; j < samplesPerPixel; j++)
         {
             float2 jitter = float2((i + 0.5) / samplesPerPixel, (j + 0.5) / samplesPerPixel);
-            float2 ndc = ((id.xy + jitter) / float2(width, height)) * 2.0 - 1.0;
+            float2 ndc = (id.xy + jitter) / float2(width, height) * 2.0 - 1.0;
             ndc.x *= aspectRatio;
     
             float scale = tan(radians(fov * 0.5));
@@ -304,32 +424,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
                 MaterialObject mat = materialColors[materialIndices[hitTriangle]];
             
                 for (uint i = 0; i < lightCount; i++)
-                {
-                    LightObject light = lights[i];
-                    float visibility = IsInShadow(hitPoint, smoothNormal, light);
+                    litColor += CalculateShadow(lights[i], hitPoint, smoothNormal, mat);
 
-                    float3 lightDir = (light.type == 0)
-                        ? normalize(light.direction)
-                        : normalize(light.position - hitPoint);
-
-                    float3 viewDir = normalize(cameraPosition - hitPoint);
-                    float3 reflectDir = reflect(-lightDir, smoothNormal);
-                    float specAmount = pow(max(dot(viewDir, reflectDir), 0.0), mat.shininess);
-                    float3 specular = mat.specularColor.rgb * light.color.rgb * light.intensity * specAmount;
-
-                    float attenuation = 5.0;
-                    if (light.type != 0) // point light fades in distance
-                    {
-                        float distance = length(light.position - hitPoint);
-                        attenuation = 5.0 / (distance * distance);
-                    }
-
-                    float NdotL = max(dot(smoothNormal, lightDir), 0.0);
-                    float3 diffuse = mat.color.rgb * light.color.rgb * light.intensity * NdotL;
-                    litColor += (diffuse + specular) * visibility * attenuation;
-                }
-
-                finalColor += litColor + mat.color.rgb * 0.1; // With ambient light
+                finalColor += litColor + mat.color.rgb * 0.1;
             }
         }
     }
@@ -337,13 +434,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     finalColor /= (samplesPerPixel * samplesPerPixel);
     finalColor = clamp(finalColor, 0.0, 1.0);
     if (sampleCount == 0)
-    {
         accumBuffer[id.xy] = float4(finalColor, 1.0);
-    }
     else
-    {
-        float blendFactor = 1.0 / (sampleCount + 1);
-        accumBuffer[id.xy] = accumBuffer[id.xy] * (1.0 - blendFactor) + float4(finalColor, 1.0) * blendFactor;
-    }
+        accumBuffer[id.xy] = accumBuffer[id.xy] * (1.0 - 1.0 / (sampleCount + 1)) + float4(finalColor, 1.0) * 1.0 / (sampleCount + 1);
+    
     colorBuffer[id.xy] = accumBuffer[id.xy];
 }

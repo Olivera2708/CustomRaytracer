@@ -4,6 +4,22 @@ using UnityEngine;
 
 public class RayTracingManager : MonoBehaviour
 {
+    // Manages the ray tracing pipeline using a compute shader in Unity.
+    //
+    // This component gathers scene geometry and light data, builds a BVH, sets up compute buffers,
+    // and dispatches a compute shader for GPU ray tracing. The final image is rendered to a fullscreen
+    // quad using a display material.
+    //
+    // Fields:
+    //   rayTracingShader: The compute shader used for ray tracing.
+    //   displayMaterial: Material used to display the final rendered image.
+    //   rayTracingCamera: Reference to the main camera.
+    //   vertexBuffer, indexBuffer, etc.: Compute buffers for scene data and rendering.
+    //   renderTexture: Final output texture of the ray tracing pass.
+    //   accumTexture: Accumulation buffer used for sampling (e.g. progressive rendering).
+    //   bvh: Bounding Volume Hierarchy structure used for acceleration.
+    //   sampleCount: Number of accumulated samples per frame.
+
     public ComputeShader rayTracingShader;
     public Material displayMaterial;
     private Camera rayTracingCamera;
@@ -35,6 +51,9 @@ public class RayTracingManager : MonoBehaviour
 
     void Start()
     {
+        // Called once at the start. Initializes camera, gathers scene and light data,
+        // builds BVH, and sets up compute buffers and render textures.
+
         rayTracingCamera = Camera.main;
         GetSceneObjects();
         GetLights();
@@ -47,6 +66,14 @@ public class RayTracingManager : MonoBehaviour
     
     private int GetLightTypeValue(LightType type)
     {
+        // Converts a Unity LightType enum to a corresponding integer used in shaders.
+        //
+        // Args:
+        //   type: Unity LightType.
+        //
+        // Returns:
+        //   Integer representing the light type (0 = directional, 1 = point, etc.).
+
         switch (type)
         {
             case LightType.Directional: return 0;
@@ -57,6 +84,11 @@ public class RayTracingManager : MonoBehaviour
 
     void GetLights()
     {
+        // Collects all active lights in the scene and stores their data as LightObject instances.
+        //
+        // Each light is processed to extract position, direction, color, intensity, and radius,
+        // which are passed to the GPU for ray tracing.
+
         Light[] lights = FindObjectsOfType<Light>();
 
         foreach (var light in lights)
@@ -83,6 +115,9 @@ public class RayTracingManager : MonoBehaviour
 
     void GetSceneObjects()
     {
+        // Gathers all visible meshes in the scene, transforms their vertex data to world space,
+        // extracts material properties, and builds a list of vertices, indices, normals, and materials.
+
         vertices.Clear();
         indices.Clear();
         materialIndices.Clear();
@@ -150,6 +185,11 @@ public class RayTracingManager : MonoBehaviour
 
     void InitRenderTexture()
     {
+        // Initializes render textures used by the compute shader pipeline.
+        //
+        // Creates and configures a color buffer and accumulation buffer, 
+        // and links them to the compute shader and display material.
+
         if (renderTexture != null) renderTexture.Release();
         if (accumTexture != null) accumTexture.Release();
 
@@ -168,6 +208,11 @@ public class RayTracingManager : MonoBehaviour
 
     void InitComputeBuffers()
     {
+        // Initializes all compute buffers required for the ray tracing shader.
+        //
+        // Allocates GPU buffers for geometry, materials, BVH nodes, lights, and other data.
+        // Uploads CPU-side data to GPU for compute shader access.
+
         if (vertexBuffer != null) vertexBuffer.Release();
         if (indexBuffer != null) indexBuffer.Release();
         if (materialBuffer != null) materialBuffer.Release();
@@ -205,6 +250,10 @@ public class RayTracingManager : MonoBehaviour
     
     void DebugFrustum()
     {
+        // Draws debug rays representing the camera frustum for visualization purposes.
+        //
+        // The near and far corners of the frustum are drawn using red and green rays.
+
         Vector3 camPos = rayTracingCamera.transform.position;
         
         // Far Plane (Green)
@@ -222,6 +271,11 @@ public class RayTracingManager : MonoBehaviour
 
     void DispatchComputeShader()
     {
+        // Dispatches the ray tracing compute shader with updated parameters and buffer bindings.
+        //
+        // Sets up all uniform and structured data for the shader and triggers execution on the GPU.
+        // Also increments the sample count used for accumulation-based rendering.
+
         rayTracingShader.SetInt("width", Screen.width);
         rayTracingShader.SetInt("height", Screen.height);
         rayTracingShader.SetInt("triangleCount", triangleCount);
@@ -253,32 +307,35 @@ public class RayTracingManager : MonoBehaviour
 
         // frustumBuffer.GetData(frustumCorners);
         // DebugFrustum();
-        // DebugHits();
-    }
-
-    void DebugHits()
-    {
-        int hitCount = 0;
-        for (int i = 0; i < hitResults.Length; i++)
-        {
-            if (hitResults[i] == 1) hitCount++;
-        }
-        Debug.Log("Hit Pixels: " + hitCount);
     }
 
     void FixedUpdate()
     {
+        // Called once per physics frame. Dispatches the compute shader if sampling is required.
+
         if (sampleCount < 1)
             DispatchComputeShader();
     }
     
     void OnRenderImage(RenderTexture src, RenderTexture dest)
     {
+        // Called by Unity after the compute shader finishes rendering.
+        //
+        // Args:
+        //   src: The source render texture (unused here).
+        //   dest: The destination render texture where the final image is drawn.
+        //
+        // Blits the ray traced render output to the screen using the display material.
+
         Graphics.Blit(renderTexture, dest, displayMaterial);
     }
 
     void OnDestroy()
     {
+        // Cleans up all compute buffers and render textures to avoid memory leaks.
+        //
+        // Called automatically when the object is destroyed or the application exits.
+
         if (vertexBuffer != null) vertexBuffer.Release();
         if (indexBuffer != null) indexBuffer.Release();
         if (renderTexture != null) renderTexture.Release();
