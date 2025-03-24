@@ -367,10 +367,55 @@ float3 CalculateShadow(LightObject light, float3 hitPoint, float3 normal, Materi
     }
 
     return (diffuse + specular) * visibility * attenuation;
+}
 
-//     float NdotL = max(dot(normal, lightDir), 0.0);
-//     float3 diffuse = mat.color.rgb * light.color.rgb * light.intensity * NdotL;
-//     return (diffuse + specular) * visibility * attenuation;
+float3 TraceRay(float3 origin, float3 rayDirWorld)
+{
+    // Traces a ray through the scene and computes the final color at the intersection point.
+    //
+    // This function casts a ray from the given origin in the specified world-space direction,
+    // traverses the BVH to find the closest intersected triangle, calculates the interpolated
+    // surface normal at the hit point using barycentric coordinates, and then computes the
+    // shading by accumulating light contributions from all scene lights while accounting for
+    // shadows. A small ambient term is also added based on the material color.
+    //
+    // Args:
+    //     origin: The starting point of the ray in world space.
+    //     rayDirWorld: The direction of the ray in world space.
+    //
+    // Returns:
+    //     The final color at the intersection point as a float3, or black if no intersection occurs.
+
+    int hitTriangle;
+    float hitDistance;
+    float u, v;
+    bool hit = TraverseBVH(origin, rayDirWorld, hitDistance, hitTriangle, u, v);
+    float3 hitPoint = origin + rayDirWorld * hitDistance;
+
+    float3 v0 = vertices[indices[hitTriangle]];
+    float3 v1 = vertices[indices[hitTriangle + 1]];
+    float3 v2 = vertices[indices[hitTriangle + 2]];
+
+    float3 barycentric = ComputeBarycentric(hitPoint, v0, v1, v2);
+
+    float3 n0 = normals[indices[hitTriangle]];
+    float3 n1 = normals[indices[hitTriangle + 1]];
+    float3 n2 = normals[indices[hitTriangle + 2]];
+
+    float3 smoothNormal = normalize(
+        barycentric.x * n0 +
+        barycentric.y * n1 +
+        barycentric.z * n2
+    );
+
+    MaterialObject mat = materialColors[materialIndices[hitTriangle]];
+
+    float3 color = float3(0, 0, 0);
+    for (uint i = 0; i < lightCount; i++)
+        color += CalculateShadow(lights[i], hitPoint, smoothNormal, mat);
+
+    color += mat.color.rgb * 0.1;
+    return color;
 }
 
 [numthreads(16, 16, 1)]
@@ -385,10 +430,6 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     //
     // Pipeline:
     //   - Generate ray based on screen-space pixel and FOV
-    //   - Traverse BVH to find closest triangle hit
-    //   - Calculate surface normal via barycentric interpolation
-    //   - Evaluate light contribution from all lights
-    //   - Perform soft shadow checks
     //   - Accumulate result into render textures
 
     if (id.x >= width || id.y >= height) return;
@@ -412,39 +453,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
                 rayDirCamera.y * cameraUp +
                 rayDirCamera.z * cameraForward
             );
-    
-            int hitTriangle;
-            float hitDistance;
-            float u, v;
-            bool hit = TraverseBVH(cameraPosition, rayDirWorld, hitDistance, hitTriangle, u, v);
-            float3 litColor = float3(0, 0, 0);
-            float3 hitPoint = cameraPosition + rayDirWorld * hitDistance;
 
-            float3 v0 = vertices[indices[hitTriangle]];
-            float3 v1 = vertices[indices[hitTriangle + 1]];
-            float3 v2 = vertices[indices[hitTriangle + 2]];
-
-            float3 barycentric = ComputeBarycentric(hitPoint, v0, v1, v2);
-
-            float3 n0 = normals[indices[hitTriangle]];
-            float3 n1 = normals[indices[hitTriangle + 1]];
-            float3 n2 = normals[indices[hitTriangle + 2]];
-
-            float3 smoothNormal = normalize(
-                barycentric.x * n0 +
-                barycentric.y * n1 +
-                barycentric.z * n2
-            );
-    
-            if (hit)
-            {
-                MaterialObject mat = materialColors[materialIndices[hitTriangle]];
-            
-                for (uint i = 0; i < lightCount; i++)
-                    litColor += CalculateShadow(lights[i], hitPoint, smoothNormal, mat);
-
-                finalColor += litColor + mat.color.rgb * 0.1;
-            }
+            finalColor += TraceRay(cameraPosition, rayDirWorld);
         }
     }
     
