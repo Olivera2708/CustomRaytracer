@@ -154,9 +154,13 @@ public class RayTracingManager : MonoBehaviour
                     ? sharedMats[submesh].GetFloat("_Glossiness") 
                     : 0.5f;
                 
-                float shininess = (glossiness > 0.5f)
-                    ? Mathf.Lerp(32f, 64f, glossiness)
-                    : Mathf.Lerp(2f, 8f, glossiness);
+                float shininess;
+                if (glossiness > 0.5f)
+                    shininess = Mathf.Lerp(32f, 64f, glossiness);
+                else if (glossiness < 0.2f)
+                    shininess = 0;
+                else
+                    shininess = Mathf.Lerp(2f, 8f, glossiness - 0.2f);
 
                 Color metallicSpec = color * Mathf.Lerp(1.0f, 10.0f, glossiness);
                 Color specularColor = Color.Lerp(new Color(0.04f, 0.04f, 0.04f), metallicSpec, metallic);

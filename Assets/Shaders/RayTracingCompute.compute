@@ -341,8 +341,6 @@ float3 CalculateShadow(LightObject light, float3 hitPoint, float3 normal, Materi
 
     float3 viewDir = normalize(cameraPosition - hitPoint);
     float3 reflectDir = reflect(-lightDir, normal);
-    float specAmount = pow(max(dot(viewDir, reflectDir), 0.0), mat.shininess);
-    float3 specular = mat.specularColor.rgb * light.color.rgb * light.intensity * specAmount;
 
     float attenuation = 5.0;
     if (light.type != 0) // point light fades in distance
@@ -350,10 +348,29 @@ float3 CalculateShadow(LightObject light, float3 hitPoint, float3 normal, Materi
         float distance = length(light.position - hitPoint);
         attenuation = 5.0 / (distance * distance);
     }
-
+    
+    float3 diffuse = float3(0, 0, 0);
+    float3 specular = float3(0, 0, 0);
     float NdotL = max(dot(normal, lightDir), 0.0);
-    float3 diffuse = mat.color.rgb * light.color.rgb * light.intensity * NdotL;
+    
+    if (mat.shininess == 0)
+    {
+        // Pure Lambertian
+        diffuse = mat.color.rgb * light.color.rgb * light.intensity * NdotL;
+    }
+    else
+    {
+        // Blended diffuse + specular
+        float specAmount = pow(max(dot(viewDir, reflectDir), 0.0), mat.shininess);
+        specular = mat.specularColor.rgb * light.color.rgb * light.intensity * specAmount;
+        diffuse = mat.color.rgb * light.color.rgb * light.intensity * NdotL;
+    }
+
     return (diffuse + specular) * visibility * attenuation;
+
+//     float NdotL = max(dot(normal, lightDir), 0.0);
+//     float3 diffuse = mat.color.rgb * light.color.rgb * light.intensity * NdotL;
+//     return (diffuse + specular) * visibility * attenuation;
 }
 
 [numthreads(16, 16, 1)]
