@@ -84,7 +84,3 @@ You can adjust lighting, material, and rendering parameters directly from the Un
   - Frustum buffer setup and debug drawing
   - Ray drawing utility
   - Triangle debug view
-
----
-
-Let me know if you’d like me to auto-generate a `GitHub`-friendly file layout, or write a `README` badge block (with Unity version, License, etc.) for the top.
