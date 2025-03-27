@@ -62,7 +62,7 @@ Beyond producing physically-inspired visuals, the project also serves as an educ
 
 ## How It Works
 
-Each frame, the renderer casts several rays per pixel. Rays intersect with geometry via BVH traversal, and at each hit point, lighting is calculated using surface normals, light positions, visibility (shadows), and material properties. Results are accumulated over multiple frames to reduce noise (progressive sampling).
+Each frame, the renderer casts several rays per pixel. Rays intersect with geometry via BVH traversal, and at each hit point, lighting is calculated using surface normals, light positions, visibility (shadows), and material properties.
 
 **Soft Shadows** are computed by randomly sampling within the area light's radius. For each sample, a shadow ray is tested for occlusion. The final visibility is averaged across all shadow rays.
 
