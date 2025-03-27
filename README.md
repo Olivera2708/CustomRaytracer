@@ -4,6 +4,10 @@ This project is a fully custom ray tracer implemented in Unity using compute sha
 
 Beyond producing physically-inspired visuals, the project also serves as an educational tool. It includes visual debugging utilities to help developers understand ray paths, mesh geometry, and the camera frustum in real-time.
 
+<p align="center">
+  <img src="Screenshots/Cobra.png" width="600px">
+</p>
+
 ---
 
 ## Table of Contents
