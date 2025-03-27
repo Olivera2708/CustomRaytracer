@@ -5,7 +5,7 @@ This project is a fully custom ray tracer implemented in Unity using compute sha
 Beyond producing physically-inspired visuals, the project also serves as an educational tool. It includes visual debugging utilities to help developers understand ray paths, mesh geometry, and the camera frustum in real-time.
 
 <p align="center">
-  <img src="Screenshots/Cobra.png" width="600px">
+  <img src="Screenshots/Cobra.png" width="800px">
 </p>
 
 ---
@@ -31,11 +31,23 @@ Beyond producing physically-inspired visuals, the project also serves as an educ
 - **Metallic and Smoothness Parameters**: Enables materials to exhibit various real-world surface behaviors.
 - **Per-pixel Shading**: Shading is performed at sub-pixel resolution using supersampling.
 
+<p align="center">
+  <img src="Screenshots/Spheres_Pastel.png" width="800px">
+  <br>
+  <em>Matte pastel-colored spheres rendered with soft shadows and Lambertian shading</em>
+</p>
+
 ### Lighting and Shadows
 
 - **Direct Lighting**: Supports both directional and point lights.
 - **Hard Shadows**: Achieved via single shadow rays per light.
 - **Soft Shadows**: Area light simulation using multi-sample shadow rays for penumbra effects.
+
+<p align="center">
+  <img src="Screenshots/Spheres.png" width="800px">
+  <br>
+  <em>Scene featuring both glossy metallic and matte spheres, showcasing material diversity and specular highlights</em>
+</p>
 
 ### Ray Tracing Core
 
