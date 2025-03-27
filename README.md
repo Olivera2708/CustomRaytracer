@@ -17,8 +17,6 @@ Beyond producing physically-inspired visuals, the project also serves as an educ
 - [Bonus Visualization Tools](#bonus-visualization-tools)
 - [Getting Started](#getting-started)
 - [Code Structure](#code-structure)
-- [Screenshots](#screenshots)
-- [License](#license)
 
 ---
 
