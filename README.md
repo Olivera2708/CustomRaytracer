@@ -78,6 +78,10 @@ These utilities are available in the project to assist with debugging and educat
 - **Ray Visualizer**: Displays rays being cast into the scene.
 - **Mesh Triangle Visualizer**: Shows individual triangle geometry for objects in world space.
 
+<p align="center">
+  <img src="Screenshots/Triangles.png" width="800px">
+</p>
+
 ---
 
 ## Getting Started
